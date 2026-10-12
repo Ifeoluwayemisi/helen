@@ -1,0 +1,6 @@
+{
+  "name": "Hellen Store POS & Inventory",
+  "description": "Mobile-first Point of Sale and Inventory Management System for Hellen Store, featuring fast checkout, stock tracking, receipts, staff roles, and reporting.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

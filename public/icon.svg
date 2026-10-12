@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#022c22" flood-opacity="0.3" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  <circle cx="256" cy="256" r="180" fill="white" fill-opacity="0.08" />
+  <!-- Cart & Store Icon -->
+  <g filter="url(#shadow)" transform="translate(106, 116)">
+    <!-- Shopping bag / register icon -->
+    <path d="M50 80 L250 80 L230 220 L70 220 Z" fill="#ffffff" fill-opacity="0.95" />
+    <path d="M100 80 C100 40, 200 40, 200 80" fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" />
+    <!-- Checkmark badge in center -->
+    <circle cx="150" cy="150" r="42" fill="#10b981" />
+    <path d="M136 150 L146 160 L166 140" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Store awning accents -->
+    <path d="M40 80 L65 110 L90 80 L115 110 L140 80 L165 110 L190 80 L215 110 L240 80 L260 110" fill="none" stroke="#fbbf24" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

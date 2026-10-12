@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Thermal Receipt Print Stylesheet (BR-09, REC-04) */
+@media print {
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+
+  body {
+    background-color: white !important;
+    color: black !important;
+    font-size: 11px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide app navigation, headers, and action buttons on print */
+  header,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Show only printable receipt */
+  .print\:fixed-none {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}
