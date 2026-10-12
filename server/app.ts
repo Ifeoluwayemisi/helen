@@ -1,8 +1,12 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import { checkDatabaseConnection } from './db/pool';
 import { config } from './config';
 import { catalogRoutes } from './routes/catalog.routes';
+import { authRoutes } from './routes/auth.routes';
+import { staffRoutes } from './routes/staff.routes';
+import { inventoryRoutes } from './routes/inventory.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = fastify({
@@ -16,6 +20,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+
+  // Enable Cookie parsing & signing
+  await app.register(cookie, {
+    secret: process.env.COOKIE_SECRET || 'hellen-store-secure-cookie-secret-key-2026',
   });
 
   // Health endpoint: GET /api/health
@@ -39,6 +48,15 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Catalog read routes: GET /api/products, /api/categories, /api/settings
   await app.register(catalogRoutes);
+
+  // Auth routes: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me, setup
+  await app.register(authRoutes);
+
+  // Staff management & audit routes: GET/POST/PATCH /api/staff, GET /api/audit-logs
+  await app.register(staffRoutes);
+
+  // Inventory & stock ledger routes: POST /api/inventory/receive, /api/inventory/adjust, GET /api/inventory/movements
+  await app.register(inventoryRoutes);
 
   return app;
 }

@@ -28,6 +28,7 @@ export const InventoryScreen: React.FC = () => {
   // Receive stock modal / form state
   const [receiveModalProduct, setReceiveModalProduct] = useState<Product | null>(null);
   const [receiveQuantity, setReceiveQuantity] = useState<string>('10');
+  const [receiveSellingUnit, setReceiveSellingUnit] = useState<import('../../types').SellingUnitType>('BASE');
   const [receiveSupplier, setReceiveSupplier] = useState('');
   const [receiveUnitCost, setReceiveUnitCost] = useState<string>('');
   const [receiveNote, setReceiveNote] = useState('');
@@ -92,6 +93,7 @@ export const InventoryScreen: React.FC = () => {
   const openReceiveModal = (product: Product) => {
     setReceiveModalProduct(product);
     setReceiveQuantity('10');
+    setReceiveSellingUnit('BASE');
     setReceiveSupplier('');
     setReceiveUnitCost(product.costPrice ? String(product.costPrice) : '');
     setReceiveNote('');
@@ -106,6 +108,7 @@ export const InventoryScreen: React.FC = () => {
     receiveStock({
       productId: receiveModalProduct.id,
       quantity: qty,
+      sellingUnit: receiveSellingUnit,
       supplier: receiveSupplier.trim() || undefined,
       note: receiveNote.trim() || undefined,
       unitCost: receiveUnitCost ? parseFloat(receiveUnitCost) : undefined,
@@ -317,11 +320,11 @@ export const InventoryScreen: React.FC = () => {
                                     : 'bg-emerald-50 text-emerald-800'
                                 }`}
                               >
-                                {p.stockQuantity}
+                                {p.stockQuantity} {p.baseUnit ? (p.stockQuantity === 1 ? p.baseUnit : `${p.baseUnit}s`) : 'units'}
                               </span>
                             </td>
                             <td className="py-3 px-3 text-center text-slate-500">
-                              {p.minStockThreshold} units
+                              {p.minStockThreshold} {p.baseUnit || 'unit'}s
                             </td>
                             <td className="py-3 px-3 text-center">
                               {isOut ? (
@@ -527,20 +530,80 @@ export const InventoryScreen: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Quantity Received (Units) *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={receiveQuantity}
-                  onChange={(e) => setReceiveQuantity(e.target.value)}
-                  className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                  autoFocus
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Intake Unit Type *
+                  </label>
+                  <select
+                    value={receiveSellingUnit}
+                    onChange={(e) => setReceiveSellingUnit(e.target.value as import('../../types').SellingUnitType)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 bg-white"
+                  >
+                    <option value="BASE">
+                      Individual {receiveModalProduct.baseUnit || 'unit'} (1x)
+                    </option>
+                    {receiveModalProduct.hasPack && (
+                      <option value="PACK">
+                        {receiveModalProduct.packUnitName || `Pack of ${receiveModalProduct.packSize}`} ({receiveModalProduct.packSize}x {receiveModalProduct.baseUnit || 'unit'}s)
+                      </option>
+                    )}
+                    {receiveModalProduct.hasCarton && (
+                      <option value="CARTON">
+                        {receiveModalProduct.cartonUnitName || `Carton of ${receiveModalProduct.cartonSize}`} ({receiveModalProduct.cartonSize}x {receiveModalProduct.baseUnit || 'unit'}s)
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Quantity to Receive *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={receiveQuantity}
+                    onChange={(e) => setReceiveQuantity(e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    autoFocus
+                  />
+                </div>
               </div>
+
+              {/* Conversion factor explanation banner */}
+              {(() => {
+                const qty = parseInt(receiveQuantity, 10) || 0;
+                const multiplier =
+                  receiveSellingUnit === 'PACK'
+                    ? (receiveModalProduct.packSize || 1)
+                    : receiveSellingUnit === 'CARTON'
+                    ? (receiveModalProduct.cartonSize || 1)
+                    : 1;
+                const totalBase = qty * multiplier;
+                const unitName =
+                  receiveSellingUnit === 'PACK'
+                    ? (receiveModalProduct.packUnitName || 'pack')
+                    : receiveSellingUnit === 'CARTON'
+                    ? (receiveModalProduct.cartonUnitName || 'carton')
+                    : (receiveModalProduct.baseUnit || 'unit');
+
+                return (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold">Intake: </span>
+                      <strong>{qty} {unitName}</strong>
+                      {multiplier > 1 && (
+                        <span className="text-slate-600"> (×{multiplier} base {receiveModalProduct.baseUnit || 'unit'}s)</span>
+                      )}
+                    </div>
+                    <div className="font-extrabold text-emerald-800">
+                      +{totalBase} {receiveModalProduct.baseUnit || 'unit'}s into stock
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">

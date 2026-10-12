@@ -51,6 +51,12 @@ export const POSScreen: React.FC = () => {
   const [tempDiscountVal, setTempDiscountVal] = useState<string>('');
   const [tempDiscountType, setTempDiscountType] = useState<'fixed' | 'percentage'>('fixed');
 
+  // Quick-Sale Unit & Price Tier Selection Modal (Stage 4A Quick-sale preparation)
+  const [unitSelectProduct, setUnitSelectProduct] = useState<Product | null>(null);
+  const [selectedUnitType, setSelectedUnitType] = useState<import('../../types').SellingUnitType>('BASE');
+  const [selectedPriceTier, setSelectedPriceTier] = useState<import('../../types').PriceTier>('RETAIL');
+  const [unitQuantityInput, setUnitQuantityInput] = useState<number>(1);
+
   // Checkout state
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [amountPaidInput, setAmountPaidInput] = useState<string>('');
@@ -231,7 +237,16 @@ export const POSScreen: React.FC = () => {
                   <button
                     key={product.id}
                     disabled={isOutOfStock}
-                    onClick={() => addToCart(product)}
+                    onClick={() => {
+                      if (product.hasPack || product.hasCarton || product.wholesalePrice !== undefined) {
+                        setUnitSelectProduct(product);
+                        setSelectedUnitType('BASE');
+                        setSelectedPriceTier('RETAIL');
+                        setUnitQuantityInput(1);
+                      } else {
+                        addToCart(product, 1, 'BASE', 'RETAIL');
+                      }
+                    }}
                     className={`relative flex flex-col justify-between text-left p-3 rounded-2xl border transition text-slate-900 ${
                       isOutOfStock
                         ? 'bg-slate-100/70 border-slate-200 opacity-60 cursor-not-allowed'
@@ -248,22 +263,40 @@ export const POSScreen: React.FC = () => {
                     )}
 
                     <div>
-                      {/* SKU */}
-                      <span className="text-[10px] font-mono text-slate-400 block truncate">
-                        {product.sku}
-                      </span>
+                      {/* SKU and Selling Units Badges */}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-mono text-slate-400 block truncate">
+                          {product.sku}
+                        </span>
+                        {product.hasCarton && (
+                          <span className="text-[9px] bg-indigo-50 text-indigo-700 font-bold px-1 rounded">
+                            Carton
+                          </span>
+                        )}
+                        {product.hasPack && !product.hasCarton && (
+                          <span className="text-[9px] bg-emerald-50 text-emerald-700 font-bold px-1 rounded">
+                            Pack
+                          </span>
+                        )}
+                      </div>
                       {/* Product Name */}
                       <h4 className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5 line-clamp-2 leading-snug">
                         {product.name}
                       </h4>
                     </div>
 
-                    <div className="mt-3 pt-2 border-t border-slate-100 flex items-end justify-between">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-end justify-between">
                       <div>
                         {/* Price */}
                         <div className="text-xs sm:text-sm font-extrabold text-emerald-800">
                           {settings.currency}{product.sellingPrice.toLocaleString()}
+                          <span className="text-[10px] font-normal text-slate-500">/{product.baseUnit || 'btl'}</span>
                         </div>
+                        {product.wholesalePrice !== undefined && (
+                          <div className="text-[10px] text-indigo-700 font-semibold leading-none mt-0.5">
+                            Ws: {settings.currency}{product.wholesalePrice.toLocaleString()}
+                          </div>
+                        )}
                         {/* Stock indicator */}
                         <div className="text-[10px] font-medium mt-0.5">
                           {isOutOfStock ? (
@@ -369,16 +402,31 @@ export const POSScreen: React.FC = () => {
           ) : (
             cart.map((item) => (
               <div
-                key={item.product.id}
+                key={`${item.product.id}_${item.selectedUnit || 'BASE'}_${item.priceTier || 'RETAIL'}`}
                 className="p-2.5 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-2"
               >
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <h5 className="text-xs font-bold text-slate-900 truncate">
-                      {item.product.name}
-                    </h5>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      {settings.currency}{item.unitPrice.toLocaleString()} each · SKU: {item.product.sku}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h5 className="text-xs font-bold text-slate-900 truncate">
+                        {item.product.name}
+                      </h5>
+                      {item.selectedUnit && item.selectedUnit !== 'BASE' && (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded">
+                          {item.selectedUnitName || item.selectedUnit}
+                        </span>
+                      )}
+                      {item.priceTier === 'WHOLESALE' && (
+                        <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.2 rounded">
+                          WHOLESALE
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      {settings.currency}{item.unitPrice.toLocaleString()}/{item.selectedUnitName || item.product.baseUnit || 'unit'}
+                      {item.totalBaseUnits && item.totalBaseUnits !== item.quantity && (
+                        <span className="text-slate-400"> ({item.totalBaseUnits} {item.product.baseUnit || 'bottle'}s)</span>
+                      )}
                     </div>
                   </div>
                   <div className="text-xs font-extrabold text-emerald-800 whitespace-nowrap">
@@ -390,7 +438,7 @@ export const POSScreen: React.FC = () => {
                 <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                      onClick={() => updateCartQuantity(item.product.id, item.quantity - 1, item.selectedUnit, item.priceTier)}
                       className="w-7 h-7 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 active:scale-95 transition"
                     >
                       <Minus className="w-3.5 h-3.5" />
@@ -398,16 +446,15 @@ export const POSScreen: React.FC = () => {
                     <input
                       type="number"
                       min={1}
-                      max={item.product.stockQuantity}
                       value={item.quantity}
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 1;
-                        updateCartQuantity(item.product.id, val);
+                        updateCartQuantity(item.product.id, val, item.selectedUnit, item.priceTier);
                       }}
                       className="w-12 h-7 text-center font-bold text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600"
                     />
                     <button
-                      onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
+                      onClick={() => updateCartQuantity(item.product.id, item.quantity + 1, item.selectedUnit, item.priceTier)}
                       className="w-7 h-7 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 active:scale-95 transition"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -415,7 +462,7 @@ export const POSScreen: React.FC = () => {
                   </div>
 
                   <button
-                    onClick={() => removeFromCart(item.product.id)}
+                    onClick={() => removeFromCart(item.product.id, item.selectedUnit, item.priceTier)}
                     className="text-slate-400 hover:text-rose-600 p-1 rounded-md transition"
                     title="Remove item"
                   >
@@ -842,11 +889,211 @@ export const POSScreen: React.FC = () => {
         </div>
       )}
 
+      {/* QUICK-SALE: SELLING UNIT & PRICING SELECTION MODAL (Stage 4A Quick-sale preparation) */}
+      {unitSelectProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
+                  Quick-Sale Configuration
+                </span>
+                <h3 className="text-sm font-bold truncate max-w-[260px]">
+                  {unitSelectProduct.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setUnitSelectProduct(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3.5 text-xs">
+              {/* Product Info & Stock */}
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-mono block">SKU: {unitSelectProduct.sku}</span>
+                  <span className="font-bold text-slate-800">
+                    Stock: {unitSelectProduct.stockQuantity} {unitSelectProduct.baseUnit || 'bottle'}s
+                  </span>
+                </div>
+                <span className="text-xs font-extrabold text-emerald-800">
+                  {settings.currency}{unitSelectProduct.sellingPrice.toLocaleString()}/{unitSelectProduct.baseUnit || 'bottle'}
+                </span>
+              </div>
+
+              {/* 1. Choose Selling Unit */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  1. Choose Selling Unit
+                </label>
+                <div className="grid grid-cols-1 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUnitType('BASE')}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition ${
+                      selectedUnitType === 'BASE'
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span>Single {unitSelectProduct.baseUnit || 'Bottle'} (1 unit)</span>
+                    <span className="text-xs font-mono">
+                      {settings.currency}
+                      {(selectedPriceTier === 'WHOLESALE' && unitSelectProduct.wholesalePrice !== undefined
+                        ? unitSelectProduct.wholesalePrice
+                        : unitSelectProduct.sellingPrice
+                      ).toLocaleString()}
+                    </span>
+                  </button>
+
+                  {unitSelectProduct.hasPack && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUnitType('PACK')}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition ${
+                        selectedUnitType === 'PACK'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span>{unitSelectProduct.packUnitName || `Pack of ${unitSelectProduct.packSize}`} ({unitSelectProduct.packSize} {unitSelectProduct.baseUnit || 'bottle'}s)</span>
+                      <span className="text-xs font-mono">
+                        {settings.currency}
+                        {(selectedPriceTier === 'WHOLESALE' && unitSelectProduct.packWholesalePrice !== undefined
+                          ? unitSelectProduct.packWholesalePrice
+                          : (unitSelectProduct.packRetailPrice ?? (unitSelectProduct.sellingPrice * (unitSelectProduct.packSize || 12)))
+                        ).toLocaleString()}
+                      </span>
+                    </button>
+                  )}
+
+                  {unitSelectProduct.hasCarton && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUnitType('CARTON')}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition ${
+                        selectedUnitType === 'CARTON'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span>{unitSelectProduct.cartonUnitName || `Carton of ${unitSelectProduct.cartonSize}`} ({unitSelectProduct.cartonSize} {unitSelectProduct.baseUnit || 'bottle'}s)</span>
+                      <span className="text-xs font-mono">
+                        {settings.currency}
+                        {(selectedPriceTier === 'WHOLESALE' && unitSelectProduct.cartonWholesalePrice !== undefined
+                          ? unitSelectProduct.cartonWholesalePrice
+                          : (unitSelectProduct.cartonRetailPrice ?? (unitSelectProduct.sellingPrice * (unitSelectProduct.cartonSize || 24)))
+                        ).toLocaleString()}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Choose Price Tier */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  2. Choose Pricing Rule
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPriceTier('RETAIL')}
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition ${
+                      selectedPriceTier === 'RETAIL'
+                        ? 'border-emerald-600 bg-emerald-700 text-white shadow-xs'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    Retail Sale
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPriceTier('WHOLESALE')}
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition ${
+                      selectedPriceTier === 'WHOLESALE'
+                        ? 'border-indigo-600 bg-indigo-700 text-white shadow-xs'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    Wholesale Sale
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Quantity input */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  3. Enter Quantity
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUnitQuantityInput((q) => Math.max(1, q - 1))}
+                    className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center font-bold text-slate-700"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    value={unitQuantityInput}
+                    onChange={(e) => setUnitQuantityInput(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="flex-1 py-1.5 text-center font-extrabold text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setUnitQuantityInput((q) => q + 1)}
+                    className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center font-bold text-slate-700"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setUnitSelectProduct(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addToCart(unitSelectProduct, unitQuantityInput, selectedUnitType, selectedPriceTier);
+                    setUnitSelectProduct(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-sm transition"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barcode Scanner Modal */}
       <BarcodeScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
-        onProductFound={(product) => addToCart(product)}
+        onProductFound={(product) => {
+          if (product.hasPack || product.hasCarton || product.wholesalePrice !== undefined) {
+            setUnitSelectProduct(product);
+            setSelectedUnitType('BASE');
+            setSelectedPriceTier('RETAIL');
+            setUnitQuantityInput(1);
+          } else {
+            addToCart(product, 1, 'BASE', 'RETAIL');
+          }
+        }}
       />
 
       {/* Receipt Modal (after sale or reprint) */}
