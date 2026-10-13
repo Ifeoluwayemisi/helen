@@ -40,27 +40,10 @@ export interface HealthCheckResponse {
 }
 
 class ApiService {
-  private token: string | null = null;
-
   constructor() {
     if (typeof window !== "undefined") {
-      this.token = localStorage.getItem("hs_session_token");
+      localStorage.removeItem("hs_session_token");
     }
-  }
-
-  public setToken(token: string | null) {
-    this.token = token;
-    if (typeof window !== "undefined") {
-      if (token) {
-        localStorage.setItem("hs_session_token", token);
-      } else {
-        localStorage.removeItem("hs_session_token");
-      }
-    }
-  }
-
-  public getToken(): string | null {
-    return this.token;
   }
 
   private async fetchJson<T>(
@@ -70,7 +53,6 @@ class ApiService {
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         ...((options?.headers as Record<string, string>) || {}),
       };
 
@@ -142,12 +124,35 @@ class ApiService {
     return result.categories;
   }
 
+  public async createCategory(
+    data: Pick<Category, "name" | "description" | "active">,
+  ): Promise<Category> {
+    const result = await this.fetchJson<{
+      success: boolean;
+      category: Category;
+    }>("/api/categories", { method: "POST", body: JSON.stringify(data) });
+    return result.category;
+  }
+
   // Fetch store business settings: GET /api/settings
   public async getSettings(): Promise<BusinessSettings> {
     const result = await this.fetchJson<{
       success: boolean;
       settings: BusinessSettings;
     }>("/api/settings");
+    return result.settings;
+  }
+
+  public async updateSettings(
+    settings: Partial<BusinessSettings>,
+  ): Promise<BusinessSettings> {
+    const result = await this.fetchJson<{
+      success: boolean;
+      settings: BusinessSettings;
+    }>("/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify(settings),
+    });
     return result.settings;
   }
 
@@ -294,32 +299,23 @@ class ApiService {
   public async login(
     email: string,
     credential: string,
-  ): Promise<{ success: boolean; user: User; token: string }> {
+  ): Promise<{ success: boolean; user: User }> {
     const result = await this.fetchJson<{
       success: boolean;
       user: User;
-      token: string;
     }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, credential }),
     });
-
-    if (result.token) {
-      this.setToken(result.token);
-    }
 
     return result;
   }
 
   // Revoke session & clear cookie: POST /api/auth/logout
   public async logout(): Promise<void> {
-    try {
-      await this.fetchJson<{ success: boolean }>("/api/auth/logout", {
-        method: "POST",
-      });
-    } finally {
-      this.setToken(null);
-    }
+    await this.fetchJson<{ success: boolean }>("/api/auth/logout", {
+      method: "POST",
+    });
   }
 
   // Validate current active session: GET /api/auth/me

@@ -39,9 +39,9 @@ export const SettingsScreen: React.FC = () => {
   const [importJsonText, setImportJsonText] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
+    await updateSettings({
       storeName: storeName.trim(),
       branchName: branchName.trim(),
       phone: phone.trim(),
@@ -276,7 +276,8 @@ export const SettingsScreen: React.FC = () => {
             )}
           </form>
 
-          {/* 4. Data Management & Disaster Recovery (JSON Backup / Restore) */}
+          {!import.meta.env.PROD && <>
+          {/* 4. Development-only local database backup and demo reset */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-2 border-b border-slate-100">
               <Download className="w-4 h-4 text-emerald-700" />
@@ -323,6 +324,7 @@ export const SettingsScreen: React.FC = () => {
               )}
             </div>
           </div>
+          </>}
         </div>
       </div>
 

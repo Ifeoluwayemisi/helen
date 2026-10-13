@@ -31,7 +31,7 @@ export const StaffScreen: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('CASHIER');
-  const [pin, setPin] = useState('1234');
+  const [pin, setPin] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Reset PIN modal state
@@ -52,7 +52,7 @@ export const StaffScreen: React.FC = () => {
     }
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -66,7 +66,7 @@ export const StaffScreen: React.FC = () => {
     }
 
     try {
-      createUser({
+      await createUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         role,
@@ -76,7 +76,7 @@ export const StaffScreen: React.FC = () => {
       setIsAddUserOpen(false);
       setName('');
       setEmail('');
-      setPin('1234');
+      setPin('');
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Error creating staff user');
     }
@@ -221,7 +221,7 @@ export const StaffScreen: React.FC = () => {
                           )}
                           {isAdmin && u.id !== currentUser.id && (
                             <button
-                              onClick={() => toggleUserActive(u.id)}
+                              onClick={() => void toggleUserActive(u.id).catch(() => undefined)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
                                 u.active
                                   ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'

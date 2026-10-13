@@ -627,6 +627,37 @@ export class DatabaseStore {
   }
 
   private loadState(): DatabaseState {
+    if (import.meta.env.PROD) {
+      return {
+        users: [],
+        currentUser: {
+          id: "unauthenticated",
+          name: "Sign in required",
+          email: "",
+          role: "CASHIER",
+          active: false,
+          createdAt: new Date(0).toISOString(),
+        },
+        categories: [],
+        products: [],
+        sales: [],
+        movements: [],
+        auditLogs: [],
+        settings: {
+          storeName: "",
+          branchName: "",
+          phone: "",
+          address: "",
+          currency: "₦",
+          receiptFooter: "",
+          taxRate: 0,
+          enableTax: false,
+          lowStockGlobalThreshold: 0,
+          timezone: "",
+        },
+      };
+    }
+
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
@@ -659,6 +690,7 @@ export class DatabaseStore {
   }
 
   private saveStateToDisk(state: DatabaseState) {
+    if (import.meta.env.PROD) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {

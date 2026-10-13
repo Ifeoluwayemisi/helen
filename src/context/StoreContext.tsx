@@ -104,16 +104,18 @@ interface StoreContextValue {
     id: string,
     updates: Partial<Product>,
   ) => Promise<Product | void>;
-  toggleProductActive: (id: string) => void;
-  createCategory: (data: Omit<Category, "id" | "createdAt">) => Category;
+  toggleProductActive: (id: string) => Promise<void>;
+  createCategory: (
+    data: Omit<Category, "id" | "createdAt">,
+  ) => Promise<Category>;
 
   // User Management
-  createUser: (data: Omit<User, "id" | "createdAt">) => User;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  toggleUserActive: (id: string) => void;
+  createUser: (data: Omit<User, "id" | "createdAt">) => Promise<User>;
+  updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+  toggleUserActive: (id: string) => Promise<void>;
 
   // Settings & DB Management
-  updateSettings: (settings: Partial<BusinessSettings>) => void;
+  updateSettings: (settings: Partial<BusinessSettings>) => Promise<void>;
   exportDatabase: () => string;
   importDatabase: (json: string) => void;
   resetDatabase: () => void;
@@ -139,7 +141,28 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [dbState, setDbState] = useState<DatabaseState>(db.getState());
+  const [dbState, setDbState] = useState<DatabaseState>(() => {
+    const initial = db.getState();
+    if (!import.meta.env.PROD) return initial;
+    return {
+      ...initial,
+      users: [],
+      products: [],
+      categories: [],
+      sales: [],
+      movements: [],
+      auditLogs: [],
+      settings: {
+        ...initial.settings,
+        storeName: "",
+        branchName: "",
+        phone: "",
+        address: "",
+        receiptFooter: "",
+        bankDetails: undefined,
+      },
+    };
+  });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
   const [discountType, setDiscountType] = useState<"fixed" | "percentage">(
@@ -181,16 +204,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     message: "Local storage active",
   });
 
+  const requireProductionSession = (operation: string) => {
+    if (import.meta.env.PROD && (!isServerAuthenticated || !serverUser)) {
+      throw new Error(`Sign in to the server before ${operation}.`);
+    }
+  };
+
   const syncStaffAndAudit = async () => {
     try {
       const [staffList, liveLogs] = await Promise.all([
         api.getStaff().catch(() => null),
         api.getAuditLogs().catch(() => null),
       ]);
-      if (staffList && staffList.length > 0) {
+      if (staffList) {
         setDbState((prev) => ({ ...prev, users: staffList }));
       }
-      if (liveLogs && liveLogs.length > 0) {
+      if (liveLogs) {
         setDbState((prev) => ({ ...prev, auditLogs: liveLogs }));
       }
     } catch {
@@ -216,13 +245,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
           syncStaffAndAudit();
         }
       } else {
-        if (!api.getToken()) {
-          setIsServerAuthenticated(false);
-          setServerUser(null);
-        }
+        setIsServerAuthenticated(false);
+        setServerUser(null);
       }
     } catch {
-      if (!api.getToken()) setIsServerAuthenticated(false);
+      setIsServerAuthenticated(false);
+      setServerUser(null);
     } finally {
       setSessionCheckComplete(true);
     }
@@ -290,20 +318,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }));
 
     try {
-      const [liveProducts, liveCategories] = await Promise.all([
+      const [liveProducts, liveCategories, liveSettings] = await Promise.all([
         api.getProducts(),
         api.getCategories(),
+        api.getSettings(),
       ]);
 
-      if (
-        Array.isArray(liveProducts) &&
-        Array.isArray(liveCategories) &&
-        liveProducts.length > 0
-      ) {
+      if (Array.isArray(liveProducts) && Array.isArray(liveCategories)) {
         setDbState((prev) => ({
           ...prev,
           products: liveProducts,
           categories: liveCategories,
+          settings: liveSettings,
         }));
 
         setApiSyncStatus({
@@ -322,11 +348,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "API offline";
-      // Explicitly label as development fallback without throwing or corrupting local state
+      if (import.meta.env.PROD) {
+        setDbState((prev) => ({
+          ...prev,
+          users: [],
+          products: [],
+          categories: [],
+          sales: [],
+          movements: [],
+          auditLogs: [],
+          settings: {
+            ...prev.settings,
+            storeName: "",
+            branchName: "",
+            phone: "",
+            address: "",
+            receiptFooter: "",
+            bankDetails: undefined,
+          },
+        }));
+      }
       setApiSyncStatus({
         status: "error",
-        source: "local_storage",
-        message: `API unreached (${errorMsg}). Retaining local storage catalog (development fallback).`,
+        source: import.meta.env.PROD ? "database" : "local_storage",
+        message: import.meta.env.PROD
+          ? `Server unavailable (${errorMsg}). Local demo data is disabled in production.`
+          : `API unreached (${errorMsg}). Retaining local storage catalog (development fallback).`,
         lastChecked: new Date().toISOString(),
       });
     }
@@ -344,9 +391,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     return unsubscribe;
   }, []);
 
-  const currentUser = dbState.currentUser;
+  const currentUser = serverUser || (import.meta.env.PROD
+    ? { ...dbState.currentUser, name: "Sign in required", email: "", role: "CASHIER" as const, active: false }
+    : dbState.currentUser);
 
   const switchUser = (userId: string) => {
+    if (import.meta.env.PROD) {
+      showToast(
+        "Operator switching is disabled in production. Sign in with the staff account.",
+        "error",
+      );
+      return;
+    }
     try {
       db.setCurrentUser(userId);
       const user = db.getState().users.find((u) => u.id === userId);
@@ -583,11 +639,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error(
           "Checking your sign-in session. Please retry checkout in a moment.",
         );
-      if (!isServerAuthenticated && api.getToken()) {
-        throw new Error(
-          "Your server session could not be verified. Sign in again before recording a sale.",
-        );
-      }
+      requireProductionSession("recording a sale");
       let sale: Sale;
       if (isServerAuthenticated) {
         if (!serverUser)
@@ -705,6 +757,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
         // Sync catalog after server intake
         await syncCatalogFromApi();
       } else {
+        requireProductionSession("receiving stock");
         db.receiveStock({ ...params, actor: currentUser });
       }
       showToast(`Stock replenished (+${params.quantity} units)`, "success");
@@ -728,6 +781,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
         await api.adjustStock(params);
         await syncCatalogFromApi();
       } else {
+        requireProductionSession("adjusting stock");
         db.adjustStock({ ...params, actor: currentUser });
       }
       showToast(`Stock updated to ${params.newQuantity} units`, "success");
@@ -754,6 +808,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
           return prod;
         }
       }
+      requireProductionSession("creating a product");
       const p = db.createProduct(data, currentUser);
       showToast(`Product "${p.name}" added to catalogue`, "success");
       return p;
@@ -779,6 +834,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
           return prod;
         }
       }
+      requireProductionSession("updating a product");
       db.updateProduct(id, updates, currentUser);
       showToast("Product details updated", "success");
     } catch (e: unknown) {
@@ -790,9 +846,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const toggleProductActive = (id: string) => {
+  const toggleProductActive = async (id: string) => {
     try {
-      db.toggleProductActive(id, currentUser);
+      if (isServerAuthenticated) {
+        const product = dbState.products.find((item) => item.id === id);
+        if (!product) throw new Error("Product not found in the live catalog.");
+        await api.updateProduct(id, { active: !product.active });
+        await syncCatalogFromApi();
+      } else {
+        requireProductionSession("changing product status");
+        db.toggleProductActive(id, currentUser);
+      }
       showToast("Product status updated", "success");
     } catch (e: unknown) {
       showToast(
@@ -803,9 +867,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const createCategory = (data: Omit<Category, "id" | "createdAt">) => {
+  const createCategory = async (data: Omit<Category, "id" | "createdAt">) => {
     try {
-      const c = db.createCategory(data, currentUser);
+      let c: Category;
+      if (isServerAuthenticated) {
+        c = await api.createCategory(data);
+        await syncCatalogFromApi();
+      } else {
+        requireProductionSession("creating a category");
+        c = db.createCategory(data, currentUser);
+      }
       showToast(`Category "${c.name}" created`, "success");
       return c;
     } catch (e: unknown) {
@@ -817,19 +888,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const createUser = (data: Omit<User, "id" | "createdAt">) => {
+  const createUser = async (data: Omit<User, "id" | "createdAt">) => {
     try {
-      const u = db.createUser(data, currentUser);
-      api
-        .createStaff({
+      if (isServerAuthenticated) {
+        const user = await api.createStaff({
           name: data.name,
           email: data.email,
           role: data.role,
-          credential: data.pin || "1234",
-        })
-        .catch((err) => {
-          console.warn("Server staff creation fallback:", err.message);
+          credential: data.pin || undefined,
         });
+        const users = await api.getStaff();
+        setDbState((prev) => ({ ...prev, users }));
+        showToast(`Staff member "${user.name}" created`, "success");
+        return user;
+      }
+      requireProductionSession("creating a staff account");
+      const u = db.createUser(data, currentUser);
       showToast(`Staff member "${u.name}" created`, "success");
       return u;
     } catch (e: unknown) {
@@ -841,19 +915,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
+  const updateUser = async (id: string, updates: Partial<User>) => {
     try {
+      if (isServerAuthenticated) {
+        const updated = await api.updateStaff(id, updates);
+        const users = await api.getStaff();
+        setDbState((prev) => ({ ...prev, users }));
+        showToast(`Staff member ${updated.name} updated`, "success");
+        return;
+      }
+      requireProductionSession("updating a staff account");
       db.updateUser(id, updates, currentUser);
-      api
-        .updateStaff(id, {
-          name: updates.name,
-          email: updates.email,
-          role: updates.role,
-          active: updates.active,
-        })
-        .catch((err) => {
-          console.warn("Server staff update fallback:", err.message);
-        });
       showToast("Staff member updated", "success");
     } catch (e: unknown) {
       showToast(
@@ -864,15 +936,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const toggleUserActive = (id: string) => {
+  const toggleUserActive = async (id: string) => {
     try {
+      if (isServerAuthenticated) {
+        const user = dbState.users.find((item) => item.id === id);
+        if (!user) throw new Error("Staff member not found in live directory.");
+        await api.updateStaff(id, { active: !user.active });
+        const users = await api.getStaff();
+        setDbState((prev) => ({ ...prev, users }));
+        showToast("Staff account status updated", "success");
+        return;
+      }
+      requireProductionSession("changing staff status");
       const user = db.getState().users.find((u) => u.id === id);
       db.toggleUserActive(id, currentUser);
-      if (user) {
-        api.updateStaff(id, { active: !user.active }).catch((err) => {
-          console.warn("Server staff toggle fallback:", err.message);
-        });
-      }
       showToast("Staff account status updated", "success");
     } catch (e: unknown) {
       showToast(
@@ -883,8 +960,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const updateSettings = (settings: Partial<BusinessSettings>) => {
+  const updateSettings = async (settings: Partial<BusinessSettings>) => {
     try {
+      if (isServerAuthenticated) {
+        const updated = await api.updateSettings(settings);
+        setDbState((prev) => ({ ...prev, settings: updated }));
+        showToast("Store settings saved on server", "success");
+        return;
+      }
+      requireProductionSession("updating business settings");
       db.updateSettings(settings, currentUser);
       showToast("Store settings saved", "success");
     } catch (e: unknown) {
@@ -897,11 +981,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const exportDatabase = () => {
+    if (import.meta.env.PROD) {
+      throw new Error("Local demo database export is disabled in production.");
+    }
     return db.exportDatabase();
   };
 
   const importDatabase = (json: string) => {
     try {
+      if (import.meta.env.PROD) {
+        throw new Error("Local demo backup restore is disabled in production.");
+      }
+      requireProductionSession("restoring a local database backup");
       db.importDatabase(json, currentUser);
       showToast("Database imported successfully", "success");
     } catch (e: unknown) {
@@ -915,6 +1006,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const resetDatabase = () => {
     try {
+      if (import.meta.env.PROD) {
+        throw new Error("Resetting demonstration data is disabled in production.");
+      }
+      requireProductionSession("resetting local demonstration data");
       db.resetDatabase(currentUser);
       clearCart();
       showToast("Database reset to demonstration defaults", "info");

@@ -23,6 +23,7 @@ const userIds = new Map<string, string>();
 const tokens = new Map<string, string>();
 const products: FixtureProduct[] = [];
 const categoryId = `it_cat_${runId}`;
+const extraCategoryIds: string[] = [];
 const createdSaleIds: string[] = [];
 const cashierPassword = `test-${runId}-password`;
 let app: FastifyInstance;
@@ -269,6 +270,9 @@ after(async () => {
     [...userIds.values()],
   ]);
   await query("DELETE FROM categories WHERE id = $1", [categoryId]);
+  await query("DELETE FROM categories WHERE id = ANY($1::varchar[])", [
+    extraCategoryIds,
+  ]);
   await app.close();
   await closePool();
 });
@@ -284,23 +288,26 @@ describe("PostgreSQL checkout integration", () => {
       },
     });
     assert.equal(login.statusCode, 200, login.body);
-    const loginToken = login.json().token as string;
+    const setCookie = login.headers["set-cookie"];
+    const loginCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    assert.ok(loginCookie, "login should set the HTTP-only session cookie");
+    const cookieHeader = loginCookie.split(";")[0];
     const me = await app.inject({
       method: "GET",
       url: "/api/auth/me",
-      headers: { cookie: `hs_session=${loginToken}` },
+      headers: { cookie: cookieHeader },
     });
     assert.equal(me.statusCode, 200);
     const logout = await app.inject({
       method: "POST",
       url: "/api/auth/logout",
-      headers: { cookie: `hs_session=${loginToken}` },
+      headers: { cookie: cookieHeader },
     });
     assert.equal(logout.statusCode, 200);
     const loggedOut = await app.inject({
       method: "GET",
       url: "/api/auth/me",
-      headers: { cookie: `hs_session=${loginToken}` },
+      headers: { cookie: cookieHeader },
     });
     assert.equal(loggedOut.statusCode, 401);
 
@@ -332,6 +339,50 @@ describe("PostgreSQL checkout integration", () => {
     });
     assert.equal(staff.statusCode, 200);
     assert.equal(staffDenied.statusCode, 403);
+    assert.equal(
+      staff.json().users.every((user: Record<string, unknown>) => !("pin" in user)),
+      true,
+    );
+
+    const createdCategory = await app.inject({
+      method: "POST",
+      url: "/api/categories",
+      headers: authHeaders("ADMIN"),
+      payload: {
+        name: `Integration category ${runId}`,
+        description: "Temporary integration category",
+      },
+    });
+    const categoryDenied = await app.inject({
+      method: "POST",
+      url: "/api/categories",
+      headers: authHeaders("INVENTORY"),
+      payload: { name: `Denied category ${runId}` },
+    });
+    assert.equal(createdCategory.statusCode, 201, createdCategory.body);
+    extraCategoryIds.push(createdCategory.json().category.id);
+    assert.equal(categoryDenied.statusCode, 403);
+
+    const settingsBefore = await query<{ store_name: string }>(
+      "SELECT store_name FROM business_settings WHERE id='default'",
+    );
+    const settingsUpdated = await app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: authHeaders("ADMIN"),
+      payload: { storeName: `Integration ${runId}` },
+    });
+    const settingsDenied = await app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: authHeaders("INVENTORY"),
+      payload: { storeName: "Must not persist" },
+    });
+    assert.equal(settingsUpdated.statusCode, 200, settingsUpdated.body);
+    assert.equal(settingsDenied.statusCode, 403);
+    await query("UPDATE business_settings SET store_name=$1 WHERE id='default'", [
+      settingsBefore.rows[0].store_name,
+    ]);
 
     const receive = await app.inject({
       method: "POST",

@@ -115,14 +115,14 @@ export const AppShell: React.FC<AppShellProps> = ({
               className="flex items-center gap-2 py-1 px-2.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-950 border border-emerald-800 text-left transition active:scale-95"
             >
               <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs font-bold uppercase">
-                {currentUser.name.charAt(0)}
+                {(isServerAuthenticated ? currentUser.name : import.meta.env.PROD ? "?" : currentUser.name).charAt(0)}
               </div>
               <div className="hidden sm:block text-left">
                 <span className="text-xs font-bold text-white block leading-tight">
-                  {currentUser.name}
+                  {isServerAuthenticated ? currentUser.name : import.meta.env.PROD ? "Sign in required" : currentUser.name}
                 </span>
                 <span className="text-[10px] text-emerald-300 font-mono block leading-tight">
-                  {currentUser.role}
+                  {isServerAuthenticated ? currentUser.role : import.meta.env.PROD ? "UNAUTHENTICATED" : currentUser.role}
                 </span>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
@@ -142,10 +142,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                         Current User
                       </span>
                       <span className="text-xs font-bold text-slate-900 block mt-0.5">
-                        {currentUser.name} ({currentUser.role})
+                        {isServerAuthenticated || !import.meta.env.PROD ? `${currentUser.name} (${currentUser.role})` : "Sign in required"}
                       </span>
                       <span className="text-[11px] text-slate-500 font-mono block truncate max-w-[150px]">
-                        {currentUser.email}
+                        {isServerAuthenticated || !import.meta.env.PROD ? currentUser.email : ""}
                       </span>
                     </div>
                     {isServerAuthenticated ? (
@@ -153,11 +153,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                         <ShieldCheck className="w-3 h-3 text-emerald-700" />
                         SECURE
                       </span>
-                    ) : (
+                    ) : !import.meta.env.PROD ? (
                       <span className="inline-flex items-center gap-1 text-[9px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full" title="Local session">
                         LOCAL
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Auth Actions */}
@@ -165,7 +165,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <button
                       onClick={() => {
                         setIsUserMenuOpen(false);
-                        setLoginEmail(currentUser.email);
+                        setLoginEmail(import.meta.env.PROD && !isServerAuthenticated ? "" : currentUser.email);
                         setLoginCredential('');
                         setLoginError(null);
                         setIsLoginModalOpen(true);
@@ -189,7 +189,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     )}
                   </div>
 
-                  <div className="p-1.5 max-h-48 overflow-y-auto">
+                  {!import.meta.env.PROD && <div className="p-1.5 max-h-48 overflow-y-auto">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 block">
                       Switch Active Operator
                     </span>
@@ -217,7 +217,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                           )}
                         </button>
                       ))}
-                  </div>
+                  </div>}
                 </div>
               </>
             )}

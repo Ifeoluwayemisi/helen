@@ -236,11 +236,11 @@ export const ProductsScreen: React.FC = () => {
     }
   };
 
-  const handleCreateCategory = (e: React.FormEvent) => {
+  const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
     try {
-      createCategory({
+      await createCategory({
         name: newCatName.trim(),
         description: newCatDesc.trim() || undefined,
         active: true,
@@ -458,7 +458,7 @@ export const ProductsScreen: React.FC = () => {
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => toggleProductActive(p.id)}
+                                  onClick={() => void toggleProductActive(p.id).catch(() => undefined)}
                                   className={`p-1.5 rounded-lg transition ${
                                     p.active
                                       ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'

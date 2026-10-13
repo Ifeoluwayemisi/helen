@@ -18,15 +18,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Enable CORS
   await app.register(cors, {
-    origin: true,
+    origin: config.corsOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   // Enable Cookie parsing & signing
   await app.register(cookie, {
-    secret:
-      process.env.COOKIE_SECRET || "hellen-store-secure-cookie-secret-key-2026",
+    secret: config.cookieSecret,
   });
 
   // Health endpoint: GET /api/health

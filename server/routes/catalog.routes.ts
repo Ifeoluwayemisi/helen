@@ -405,11 +405,15 @@ export const catalogRoutes: FastifyPluginAsync = async (fastify) => {
       const user = request.currentUser!;
       const isPriceChanging =
         (body.sellingPrice !== undefined && Number(body.sellingPrice) !== Number(existing.selling_price)) ||
-        (body.wholesalePrice !== undefined && Number(body.wholesalePrice) !== Number(existing.wholesale_price));
+        (body.wholesalePrice !== undefined && Number(body.wholesalePrice) !== Number(existing.wholesale_price)) ||
+        (body.packRetailPrice !== undefined && Number(body.packRetailPrice) !== Number(existing.pack_retail_price)) ||
+        (body.packWholesalePrice !== undefined && Number(body.packWholesalePrice) !== Number(existing.pack_wholesale_price)) ||
+        (body.cartonRetailPrice !== undefined && Number(body.cartonRetailPrice) !== Number(existing.carton_retail_price)) ||
+        (body.cartonWholesalePrice !== undefined && Number(body.cartonWholesalePrice) !== Number(existing.carton_wholesale_price));
 
-      // Cashiers cannot change price; INVENTORY can edit stock/details, ADMIN has full authorization
-      if (isPriceChanging && user.role === 'CASHIER') {
-        return reply.status(403).send({ success: false, error: 'Cashiers are not permitted to change product prices.' });
+      // Only admins can change any retail or wholesale price.
+      if (isPriceChanging && user.role !== 'ADMIN') {
+        return reply.status(403).send({ success: false, error: 'Only administrators are permitted to change product prices.' });
       }
 
       const updatedName = body.name !== undefined ? body.name.trim() : existing.name;
@@ -528,6 +532,44 @@ export const catalogRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.post('/api/categories', { preHandler: requireRole(['ADMIN']) }, async (request, reply) => {
+    const body = request.body as { name?: string; description?: string; active?: boolean };
+    const name = body?.name?.trim();
+    if (!name || name.length > 255) {
+      return reply.status(400).send({ success: false, error: 'Category name is required and must be 255 characters or fewer.' });
+    }
+    if (body.description !== undefined && (typeof body.description !== 'string' || body.description.length > 5000)) {
+      return reply.status(400).send({ success: false, error: 'Category description must be 5000 characters or fewer.' });
+    }
+    const id = `cat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `INSERT INTO categories (id, name, description, active)
+         VALUES ($1,$2,$3,$4)
+         RETURNING id,name,description,active,created_at AS "createdAt"`,
+        [id, name, body.description?.trim() || null, body.active !== false],
+      );
+      const actor = request.currentUser!;
+      await client.query(
+        `INSERT INTO audit_logs (id,user_id,user_name,action_type,entity_type,entity_id,details)
+         VALUES ($1,$2,$3,'SETTINGS_CHANGE','SETTINGS',$4,$5)`,
+        [`aud_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, actor.id, actor.name, id, `Created category "${name}".`],
+      );
+      await client.query('COMMIT');
+      return reply.status(201).send({ success: true, category: result.rows[0] });
+    } catch (error: unknown) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      const code = (error as { code?: string }).code;
+      if (code === '23505') return reply.status(409).send({ success: false, error: 'A category with that name already exists.' });
+      fastify.log.error(error, 'Failed to create category');
+      return reply.status(500).send({ success: false, error: 'Failed to create category.' });
+    } finally {
+      client.release();
+    }
+  });
+
   // GET /api/categories (Public / Staff categories list)
   fastify.get('/api/categories', async (_request, reply) => {
     try {
@@ -620,6 +662,104 @@ export const catalogRoutes: FastifyPluginAsync = async (fastify) => {
         success: false,
         error: 'Unable to retrieve business settings. Database service is unavailable.',
       });
+    }
+  });
+
+  fastify.patch('/api/settings', { preHandler: requireRole(['ADMIN']) }, async (request, reply) => {
+    const body = request.body as Record<string, unknown> | null;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return reply.status(400).send({ success: false, error: 'A settings object is required.' });
+    }
+    const stringFields: Record<string, { column: string; max: number }> = {
+      storeName: { column: 'store_name', max: 255 },
+      branchName: { column: 'branch_name', max: 255 },
+      phone: { column: 'phone', max: 64 },
+      address: { column: 'address', max: 4000 },
+      currency: { column: 'currency', max: 16 },
+      receiptFooter: { column: 'receipt_footer', max: 2000 },
+      timezone: { column: 'timezone', max: 64 },
+    };
+    const updates: Array<{ column: string; value: unknown }> = [];
+    for (const [field, definition] of Object.entries(stringFields)) {
+      if (body[field] === undefined) continue;
+      if (typeof body[field] !== 'string' || body[field].length > definition.max) {
+        return reply.status(400).send({ success: false, error: `Invalid ${field} value.` });
+      }
+      updates.push({ column: definition.column, value: (body[field] as string).trim() });
+    }
+    if (body.enableTax !== undefined) {
+      if (typeof body.enableTax !== 'boolean') return reply.status(400).send({ success: false, error: 'enableTax must be a boolean.' });
+      updates.push({ column: 'enable_tax', value: body.enableTax });
+    }
+    if (body.taxRate !== undefined) {
+      if (typeof body.taxRate !== 'number' || !Number.isFinite(body.taxRate) || body.taxRate < 0 || body.taxRate > 999.99) {
+        return reply.status(400).send({ success: false, error: 'taxRate must be between 0 and 999.99.' });
+      }
+      updates.push({ column: 'tax_rate', value: body.taxRate });
+    }
+    if (body.lowStockGlobalThreshold !== undefined) {
+      if (typeof body.lowStockGlobalThreshold !== 'number' || !Number.isSafeInteger(body.lowStockGlobalThreshold) || body.lowStockGlobalThreshold < 0) {
+        return reply.status(400).send({ success: false, error: 'lowStockGlobalThreshold must be a non-negative integer.' });
+      }
+      updates.push({ column: 'low_stock_global_threshold', value: body.lowStockGlobalThreshold });
+    }
+    const bankDetails = body.bankDetails as Record<string, unknown> | undefined;
+    if (bankDetails !== undefined) {
+      if (!bankDetails || typeof bankDetails !== 'object' || Array.isArray(bankDetails)) {
+        return reply.status(400).send({ success: false, error: 'bankDetails must be an object.' });
+      }
+      const fields = [
+        ['bankName', 'bank_name', 128],
+        ['accountName', 'account_name', 255],
+        ['accountNumber', 'account_number', 64],
+      ] as const;
+      for (const [field, column, max] of fields) {
+        if (bankDetails[field] !== undefined) {
+          if (typeof bankDetails[field] !== 'string' || bankDetails[field].length > max) {
+            return reply.status(400).send({ success: false, error: `Invalid bankDetails.${field} value.` });
+          }
+          updates.push({ column, value: (bankDetails[field] as string).trim() || null });
+        }
+      }
+    }
+    if (updates.length === 0) return reply.status(400).send({ success: false, error: 'No supported settings were provided.' });
+
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const assignments = updates.map((update, index) => `${update.column} = $${index + 1}`);
+      await client.query(
+        `UPDATE business_settings SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = 'default'`,
+        updates.map((update) => update.value),
+      );
+      const actor = request.currentUser!;
+      await client.query(
+        `INSERT INTO audit_logs (id,user_id,user_name,action_type,entity_type,entity_id,details)
+         VALUES ($1,$2,$3,'SETTINGS_CHANGE','SETTINGS','global_settings',$4)`,
+        [`aud_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, actor.id, actor.name, `Updated business settings: ${updates.map((update) => update.column).join(', ')}.`],
+      );
+      const result = await client.query(
+        `SELECT store_name AS "storeName", branch_name AS "branchName", phone, address, currency,
+                receipt_footer AS "receiptFooter", tax_rate::float AS "taxRate", enable_tax AS "enableTax",
+                low_stock_global_threshold AS "lowStockGlobalThreshold", timezone,
+                bank_name AS "bankName", account_name AS "accountName", account_number AS "accountNumber"
+         FROM business_settings WHERE id='default'`,
+      );
+      await client.query('COMMIT');
+      const row = result.rows[0];
+      return reply.status(200).send({
+        success: true,
+        settings: {
+          ...row,
+          bankDetails: row.bankName ? { bankName: row.bankName, accountName: row.accountName, accountNumber: row.accountNumber } : undefined,
+        },
+      });
+    } catch (error: unknown) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      fastify.log.error(error, 'Failed to update business settings');
+      return reply.status(500).send({ success: false, error: 'Failed to update business settings.' });
+    } finally {
+      client.release();
     }
   });
 };

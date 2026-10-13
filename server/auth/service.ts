@@ -1,8 +1,13 @@
-import { query } from '../db/pool';
-import { generateSessionToken, hashSessionToken, hashCredential, verifyCredential } from './crypto';
-import { User, UserRole } from '../../src/types';
+import { query } from "../db/pool";
+import {
+  generateSessionToken,
+  hashSessionToken,
+  hashCredential,
+  verifyCredential,
+} from "./crypto";
+import { User, UserRole } from "../../src/types";
 
-export const SESSION_COOKIE_NAME = 'hs_session';
+export const SESSION_COOKIE_NAME = "hs_session";
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_MINUTES = 15;
@@ -28,7 +33,7 @@ export interface AuthenticatedUser {
 export async function createSession(
   userId: string,
   ipAddress?: string,
-  userAgent?: string
+  userAgent?: string,
 ): Promise<{ rawToken: string; expiresAt: Date }> {
   const rawToken = generateSessionToken();
   const tokenHash = hashSessionToken(rawToken);
@@ -37,7 +42,13 @@ export async function createSession(
   await query(
     `INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent)
      VALUES ($1, $2, $3, $4, $5);`,
-    [tokenHash, userId, expiresAt.toISOString(), ipAddress || null, userAgent || null]
+    [
+      tokenHash,
+      userId,
+      expiresAt.toISOString(),
+      ipAddress || null,
+      userAgent || null,
+    ],
   );
 
   return { rawToken, expiresAt };
@@ -46,7 +57,9 @@ export async function createSession(
 /**
  * Validates a session token from an HTTP-only cookie or Bearer header.
  */
-export async function validateSession(rawToken: string): Promise<AuthenticatedUser | null> {
+export async function validateSession(
+  rawToken: string,
+): Promise<AuthenticatedUser | null> {
   if (!rawToken || rawToken.length < 32) return null;
 
   const tokenHash = hashSessionToken(rawToken);
@@ -59,7 +72,7 @@ export async function validateSession(rawToken: string): Promise<AuthenticatedUs
      FROM sessions s
      JOIN users u ON s.user_id = u.id
      WHERE s.id = $1;`,
-    [tokenHash]
+    [tokenHash],
   );
 
   if (res.rowCount === 0) return null;
@@ -108,7 +121,7 @@ export async function revokeSession(rawToken: string): Promise<void> {
 export async function authenticateCredentials(
   email: string,
   credential: string,
-  ipAddress?: string
+  ipAddress?: string,
 ): Promise<{ success: boolean; user?: AuthenticatedUser; error?: string }> {
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -116,12 +129,18 @@ export async function authenticateCredentials(
     `SELECT id, name, email, role, active, password_hash, pin, failed_login_attempts, locked_until, created_at AS "createdAt"
      FROM users
      WHERE LOWER(email) = $1;`,
-    [normalizedEmail]
+    [normalizedEmail],
   );
 
   if (userRes.rowCount === 0) {
-    await logSecurityAudit(null, normalizedEmail, 'LOGIN_FAILED', `Login failed: Unknown account ${normalizedEmail}`, ipAddress);
-    return { success: false, error: 'Invalid email or credential' };
+    await logSecurityAudit(
+      null,
+      normalizedEmail,
+      "LOGIN_FAILED",
+      `Login failed: Unknown account ${normalizedEmail}`,
+      ipAddress,
+    );
+    return { success: false, error: "Invalid email or credential" };
   }
 
   const user = userRes.rows[0];
@@ -129,14 +148,32 @@ export async function authenticateCredentials(
 
   // Check account active status
   if (!user.active) {
-    await logSecurityAudit(user.id, user.name, 'LOGIN_BLOCKED', `Login blocked: Account is deactivated`, ipAddress);
-    return { success: false, error: 'This account has been deactivated. Please contact the store owner.' };
+    await logSecurityAudit(
+      user.id,
+      user.name,
+      "LOGIN_BLOCKED",
+      `Login blocked: Account is deactivated`,
+      ipAddress,
+    );
+    return {
+      success: false,
+      error:
+        "This account has been deactivated. Please contact the store owner.",
+    };
   }
 
   // Check lockout status
   if (user.locked_until && new Date(user.locked_until) > now) {
-    const remainingMins = Math.ceil((new Date(user.locked_until).getTime() - now.getTime()) / 60000);
-    await logSecurityAudit(user.id, user.name, 'LOGIN_LOCKED', `Login attempt on locked account (${remainingMins} mins remaining)`, ipAddress);
+    const remainingMins = Math.ceil(
+      (new Date(user.locked_until).getTime() - now.getTime()) / 60000,
+    );
+    await logSecurityAudit(
+      user.id,
+      user.name,
+      "LOGIN_LOCKED",
+      `Login attempt on locked account (${remainingMins} mins remaining)`,
+      ipAddress,
+    );
     return {
       success: false,
       error: `Account temporarily locked due to repeated failed attempts. Please retry in ${remainingMins} minute(s).`,
@@ -152,12 +189,15 @@ export async function authenticateCredentials(
     // If user has old plaintext pin, upgrade it to scrypt hash immediately!
     isValid = true;
     const newHash = await hashCredential(credential);
-    await query(`UPDATE users SET password_hash = $1 WHERE id = $2;`, [newHash, user.id]);
+    await query(
+      `UPDATE users SET password_hash = $1, pin = NULL WHERE id = $2;`,
+      [newHash, user.id],
+    );
   }
 
   if (!isValid) {
     const attempts = (user.failed_login_attempts || 0) + 1;
-    let lockoutSql = '';
+    let lockoutSql = "";
     const params: unknown[] = [attempts, user.id];
 
     if (attempts >= MAX_FAILED_ATTEMPTS) {
@@ -166,14 +206,17 @@ export async function authenticateCredentials(
       params.push(lockDate.toISOString());
     }
 
-    await query(`UPDATE users SET failed_login_attempts = $1${lockoutSql} WHERE id = $2;`, params);
+    await query(
+      `UPDATE users SET failed_login_attempts = $1${lockoutSql} WHERE id = $2;`,
+      params,
+    );
 
     await logSecurityAudit(
       user.id,
       user.name,
-      'LOGIN_FAILED',
+      "LOGIN_FAILED",
       `Incorrect credential attempt ${attempts}/${MAX_FAILED_ATTEMPTS}`,
-      ipAddress
+      ipAddress,
     );
 
     if (attempts >= MAX_FAILED_ATTEMPTS) {
@@ -194,10 +237,16 @@ export async function authenticateCredentials(
     `UPDATE users 
      SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW() 
      WHERE id = $1;`,
-    [user.id]
+    [user.id],
   );
 
-  await logSecurityAudit(user.id, user.name, 'LOGIN_SUCCESS', `Staff member signed in successfully`, ipAddress);
+  await logSecurityAudit(
+    user.id,
+    user.name,
+    "LOGIN_SUCCESS",
+    `Staff member signed in successfully`,
+    ipAddress,
+  );
 
   return {
     success: true,
@@ -220,16 +269,16 @@ export async function logSecurityAudit(
   userName: string,
   actionType: string,
   details: string,
-  ipAddress?: string
+  ipAddress?: string,
 ): Promise<void> {
   const auditId = `aud_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const entityId = userId || 'system';
+  const entityId = userId || "system";
   const extraDetails = ipAddress ? `${details} (IP: ${ipAddress})` : details;
 
   await query(
     `INSERT INTO audit_logs (id, user_id, user_name, action_type, entity_type, entity_id, details)
      VALUES ($1, $2, $3, $4, 'AUTH', $5, $6);`,
-    [auditId, userId, userName, actionType, entityId, extraDetails]
+    [auditId, userId, userName, actionType, entityId, extraDetails],
   );
 }
 
@@ -237,6 +286,8 @@ export async function logSecurityAudit(
  * Checks whether an initial Administrator account exists.
  */
 export async function checkFirstOwnerExists(): Promise<boolean> {
-  const res = await query(`SELECT id FROM users WHERE role = 'ADMIN' AND active = true LIMIT 1;`);
+  const res = await query(
+    `SELECT id FROM users WHERE role = 'ADMIN' AND active = true LIMIT 1;`,
+  );
   return (res.rowCount ?? 0) > 0;
 }
