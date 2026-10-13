@@ -316,6 +316,13 @@ describe("PostgreSQL checkout integration", () => {
       packSize: 3,
       packPrice: "7.00",
     });
+    const inventoryPriceEdit = await app.inject({
+      method: "PATCH",
+      url: `/api/products/${product.id}`,
+      headers: authHeaders("INVENTORY"),
+      payload: { packRetailPrice: 8 },
+    });
+    assert.equal(inventoryPriceEdit.statusCode, 403);
     const catalog = await app.inject({
       method: "GET",
       url: `/api/products?search=${encodeURIComponent(product.sku)}`,
