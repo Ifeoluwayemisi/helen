@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { db, DatabaseState } from '../services/store';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { db, DatabaseState } from "../services/store";
 import {
   User,
   Product,
@@ -8,12 +15,12 @@ import {
   PaymentMethod,
   Category,
   BusinessSettings,
-} from '../types';
-import { api } from '../services/api';
+} from "../types";
+import { api } from "../services/api";
 
 export interface ApiSyncStatus {
-  status: 'idle' | 'loading' | 'synced' | 'error';
-  source: 'database' | 'local_storage';
+  status: "idle" | "loading" | "synced" | "error";
+  source: "database" | "local_storage";
   message?: string;
   lastChecked?: string;
 }
@@ -32,19 +39,19 @@ interface StoreContextValue {
   addToCart: (
     product: Product,
     quantity?: number,
-    selectedUnit?: import('../types').SellingUnitType,
-    priceTier?: import('../types').PriceTier
+    selectedUnit?: import("../types").SellingUnitType,
+    priceTier?: import("../types").PriceTier,
   ) => void;
   updateCartQuantity: (
     productId: string,
     quantity: number,
-    selectedUnit?: import('../types').SellingUnitType,
-    priceTier?: import('../types').PriceTier
+    selectedUnit?: import("../types").SellingUnitType,
+    priceTier?: import("../types").PriceTier,
   ) => void;
   removeFromCart: (
     productId: string,
-    selectedUnit?: import('../types').SellingUnitType,
-    priceTier?: import('../types').PriceTier
+    selectedUnit?: import("../types").SellingUnitType,
+    priceTier?: import("../types").PriceTier,
   ) => void;
   clearCart: () => void;
   cartSubtotal: number;
@@ -52,9 +59,9 @@ interface StoreContextValue {
 
   // Discount
   discount: number;
-  discountType: 'fixed' | 'percentage';
+  discountType: "fixed" | "percentage";
   discountAmount: number;
-  setDiscountVal: (amount: number, type: 'fixed' | 'percentage') => void;
+  setDiscountVal: (amount: number, type: "fixed" | "percentage") => void;
   clearDiscount: () => void;
 
   // Final calculated payable
@@ -66,6 +73,7 @@ interface StoreContextValue {
     paymentMethod: PaymentMethod;
     amountPaid: number;
     paymentReference?: string;
+    paymentConfirmed?: boolean;
   }) => Promise<Sale>;
 
   // Receipt & Navigation
@@ -76,7 +84,7 @@ interface StoreContextValue {
   receiveStock: (params: {
     productId: string;
     quantity: number;
-    sellingUnit?: import('../types').SellingUnitType;
+    sellingUnit?: import("../types").SellingUnitType;
     supplier?: string;
     note?: string;
     unitCost?: number;
@@ -84,18 +92,23 @@ interface StoreContextValue {
   adjustStock: (params: {
     productId: string;
     newQuantity: number;
-    reason: 'ADJUSTMENT' | 'DAMAGED' | 'RETURN';
+    reason: "ADJUSTMENT" | "DAMAGED" | "RETURN";
     note: string;
   }) => Promise<void>;
   createProduct: (
-    data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'> & { openingStock?: number }
+    data: Omit<Product, "id" | "createdAt" | "updatedAt"> & {
+      openingStock?: number;
+    },
   ) => Promise<Product>;
-  updateProduct: (id: string, updates: Partial<Product>) => Promise<Product | void>;
+  updateProduct: (
+    id: string,
+    updates: Partial<Product>,
+  ) => Promise<Product | void>;
   toggleProductActive: (id: string) => void;
-  createCategory: (data: Omit<Category, 'id' | 'createdAt'>) => Category;
+  createCategory: (data: Omit<Category, "id" | "createdAt">) => Category;
 
   // User Management
-  createUser: (data: Omit<User, 'id' | 'createdAt'>) => User;
+  createUser: (data: Omit<User, "id" | "createdAt">) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
   toggleUserActive: (id: string) => void;
 
@@ -108,30 +121,46 @@ interface StoreContextValue {
   // Authentication & Session State (Stage 3)
   isServerAuthenticated: boolean;
   serverUser: User | null;
-  loginToServer: (email: string, credential: string) => Promise<{ success: boolean; error?: string }>;
+  loginToServer: (
+    email: string,
+    credential: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   logoutFromServer: () => Promise<void>;
   resetStaffCredential: (id: string, credential: string) => Promise<void>;
 
   // Toast / Notifications
   toastMessage: string | null;
-  toastType: 'success' | 'error' | 'info';
-  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  toastType: "success" | "error" | "info";
+  showToast: (msg: string, type?: "success" | "error" | "info") => void;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
 
-export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [dbState, setDbState] = useState<DatabaseState>(db.getState());
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">(
+    "fixed",
+  );
   const [activeReceipt, setActiveReceipt] = useState<Sale | null>(null);
+  const checkoutRequestRef = useRef<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
 
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
+  const [toastType, setToastType] = useState<"success" | "error" | "info">(
+    "info",
+  );
 
-  const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const showToast = (
+    msg: string,
+    type: "success" | "error" | "info" = "info",
+  ) => {
     setToastMessage(msg);
     setToastType(type);
     setTimeout(() => {
@@ -140,14 +169,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Authentication & Session State (Stage 3)
-  const [isServerAuthenticated, setIsServerAuthenticated] = useState<boolean>(false);
+  const [isServerAuthenticated, setIsServerAuthenticated] =
+    useState<boolean>(false);
   const [serverUser, setServerUser] = useState<User | null>(null);
+  const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
 
   // Live Database Sync State (Stage 2)
   const [apiSyncStatus, setApiSyncStatus] = useState<ApiSyncStatus>({
-    status: 'idle',
-    source: 'local_storage',
-    message: 'Local storage active',
+    status: "idle",
+    source: "local_storage",
+    message: "Local storage active",
   });
 
   const syncStaffAndAudit = async () => {
@@ -173,19 +204,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (activeUser) {
         setIsServerAuthenticated(true);
         setServerUser(activeUser);
+        api
+          .getSales()
+          .then((sales) => setDbState((prev) => ({ ...prev, sales })))
+          .catch(() => undefined);
         const match = db.getState().users.find((u) => u.id === activeUser.id);
         if (match) {
           db.setCurrentUser(activeUser.id);
         }
-        if (activeUser.role === 'ADMIN') {
+        if (activeUser.role === "ADMIN") {
           syncStaffAndAudit();
         }
       } else {
-        setIsServerAuthenticated(false);
-        setServerUser(null);
+        if (!api.getToken()) {
+          setIsServerAuthenticated(false);
+          setServerUser(null);
+        }
       }
     } catch {
-      setIsServerAuthenticated(false);
+      if (!api.getToken()) setIsServerAuthenticated(false);
+    } finally {
+      setSessionCheckComplete(true);
     }
   };
 
@@ -195,20 +234,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (res.success && res.user) {
         setIsServerAuthenticated(true);
         setServerUser(res.user);
+        api
+          .getSales()
+          .then((sales) => setDbState((prev) => ({ ...prev, sales })))
+          .catch(() => undefined);
         const match = db.getState().users.find((u) => u.id === res.user.id);
         if (match) {
           db.setCurrentUser(res.user.id);
         }
-        showToast(`Authenticated as ${res.user.name} (${res.user.role})`, 'success');
-        if (res.user.role === 'ADMIN') {
+        showToast(
+          `Authenticated as ${res.user.name} (${res.user.role})`,
+          "success",
+        );
+        if (res.user.role === "ADMIN") {
           syncStaffAndAudit();
         }
         return { success: true };
       }
-      return { success: false, error: 'Login failed' };
+      return { success: false, error: "Login failed" };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Login failed';
-      showToast(msg, 'error');
+      const msg = err instanceof Error ? err.message : "Login failed";
+      showToast(msg, "error");
       return { success: false, error: msg };
     }
   };
@@ -221,17 +267,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsServerAuthenticated(false);
       setServerUser(null);
-      showToast('Logged out of server session', 'info');
+      showToast("Logged out of server session", "info");
     }
   };
 
   const resetStaffCredential = async (id: string, credential: string) => {
     try {
       await api.resetStaffCredential(id, credential);
-      showToast('Staff credential updated on server', 'success');
+      showToast("Staff credential updated on server", "success");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to reset credential';
-      showToast(msg, 'error');
+      const msg = e instanceof Error ? e.message : "Failed to reset credential";
+      showToast(msg, "error");
       throw e;
     }
   };
@@ -239,8 +285,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const syncCatalogFromApi = async () => {
     setApiSyncStatus((prev) => ({
       ...prev,
-      status: 'loading',
-      message: 'Fetching live catalog from PostgreSQL API...',
+      status: "loading",
+      message: "Fetching live catalog from PostgreSQL API...",
     }));
 
     try {
@@ -249,7 +295,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         api.getCategories(),
       ]);
 
-      if (Array.isArray(liveProducts) && Array.isArray(liveCategories) && liveProducts.length > 0) {
+      if (
+        Array.isArray(liveProducts) &&
+        Array.isArray(liveCategories) &&
+        liveProducts.length > 0
+      ) {
         setDbState((prev) => ({
           ...prev,
           products: liveProducts,
@@ -257,25 +307,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }));
 
         setApiSyncStatus({
-          status: 'synced',
-          source: 'database',
+          status: "synced",
+          source: "database",
           message: `Connected to live database (${liveProducts.length} products, ${liveCategories.length} categories)`,
           lastChecked: new Date().toISOString(),
         });
       } else {
         setApiSyncStatus({
-          status: 'synced',
-          source: 'database',
-          message: 'Live database connected (empty catalog)',
+          status: "synced",
+          source: "database",
+          message: "Live database connected (empty catalog)",
           lastChecked: new Date().toISOString(),
         });
       }
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'API offline';
+      const errorMsg = err instanceof Error ? err.message : "API offline";
       // Explicitly label as development fallback without throwing or corrupting local state
       setApiSyncStatus({
-        status: 'error',
-        source: 'local_storage',
+        status: "error",
+        source: "local_storage",
         message: `API unreached (${errorMsg}). Retaining local storage catalog (development fallback).`,
         lastChecked: new Date().toISOString(),
       });
@@ -301,10 +351,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       db.setCurrentUser(userId);
       const user = db.getState().users.find((u) => u.id === userId);
       if (user) {
-        showToast(`Switched user to ${user.name} (${user.role})`, 'success');
+        showToast(`Switched user to ${user.name} (${user.role})`, "success");
       }
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to switch user', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to switch user",
+        "error",
+      );
     }
   };
 
@@ -312,35 +365,41 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addToCart = (
     product: Product,
     quantity = 1,
-    selectedUnit: import('../types').SellingUnitType = 'BASE',
-    priceTier: import('../types').PriceTier = 'RETAIL'
+    selectedUnit: import("../types").SellingUnitType = "BASE",
+    priceTier: import("../types").PriceTier = "RETAIL",
   ) => {
     // Check available stock in live DB
-    const liveProd = dbState.products.find((p) => p.id === product.id) || product;
+    const liveProd =
+      dbState.products.find((p) => p.id === product.id) || product;
     if (liveProd.stockQuantity <= 0) {
-      showToast(`Cannot add "${product.name}": Out of stock!`, 'error');
+      showToast(`Cannot add "${product.name}": Out of stock!`, "error");
       return;
     }
 
     // Determine unit conversion factor and effective unit price
     let conversionFactor = 1;
-    let unitName = liveProd.baseUnit || 'bottle';
-    let unitPrice = priceTier === 'WHOLESALE' && liveProd.wholesalePrice !== undefined
-      ? liveProd.wholesalePrice
-      : liveProd.sellingPrice;
+    let unitName = liveProd.baseUnit || "bottle";
+    let unitPrice =
+      priceTier === "WHOLESALE" && liveProd.wholesalePrice !== undefined
+        ? liveProd.wholesalePrice
+        : liveProd.sellingPrice;
 
-    if (selectedUnit === 'PACK' && liveProd.hasPack) {
+    if (selectedUnit === "PACK" && liveProd.hasPack) {
       conversionFactor = liveProd.packSize || 12;
       unitName = liveProd.packUnitName || `Pack of ${conversionFactor}`;
-      unitPrice = priceTier === 'WHOLESALE' && liveProd.packWholesalePrice !== undefined
-        ? liveProd.packWholesalePrice
-        : (liveProd.packRetailPrice ?? (liveProd.sellingPrice * conversionFactor));
-    } else if (selectedUnit === 'CARTON' && liveProd.hasCarton) {
+      unitPrice =
+        priceTier === "WHOLESALE" && liveProd.packWholesalePrice !== undefined
+          ? liveProd.packWholesalePrice
+          : (liveProd.packRetailPrice ??
+            liveProd.sellingPrice * conversionFactor);
+    } else if (selectedUnit === "CARTON" && liveProd.hasCarton) {
       conversionFactor = liveProd.cartonSize || 24;
       unitName = liveProd.cartonUnitName || `Carton of ${conversionFactor}`;
-      unitPrice = priceTier === 'WHOLESALE' && liveProd.cartonWholesalePrice !== undefined
-        ? liveProd.cartonWholesalePrice
-        : (liveProd.cartonRetailPrice ?? (liveProd.sellingPrice * conversionFactor));
+      unitPrice =
+        priceTier === "WHOLESALE" && liveProd.cartonWholesalePrice !== undefined
+          ? liveProd.cartonWholesalePrice
+          : (liveProd.cartonRetailPrice ??
+            liveProd.sellingPrice * conversionFactor);
     }
 
     setCart((prevCart) => {
@@ -348,24 +407,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const existing = prevCart.find(
         (item) =>
           item.product.id === product.id &&
-          (item.selectedUnit || 'BASE') === selectedUnit &&
-          (item.priceTier || 'RETAIL') === priceTier
+          (item.selectedUnit || "BASE") === selectedUnit &&
+          (item.priceTier || "RETAIL") === priceTier,
       );
       const existingQty = existing ? existing.quantity : 0;
       const targetQty = existingQty + quantity;
 
       // Validate total required base units against total inventory
-      const totalBaseUnitsRequested = prevCart.reduce((sum, item) => {
-        if (item.product.id !== product.id) return sum;
-        const factor = item.unitConversionFactor || 1;
-        const itemQty = item === existing ? targetQty : item.quantity;
-        return sum + itemQty * factor;
-      }, (existing ? 0 : targetQty * conversionFactor));
+      const totalBaseUnitsRequested = prevCart.reduce(
+        (sum, item) => {
+          if (item.product.id !== product.id) return sum;
+          const factor = item.unitConversionFactor || 1;
+          const itemQty = item === existing ? targetQty : item.quantity;
+          return sum + itemQty * factor;
+        },
+        existing ? 0 : targetQty * conversionFactor,
+      );
 
       if (totalBaseUnitsRequested > liveProd.stockQuantity) {
         showToast(
-          `Only ${liveProd.stockQuantity} base ${liveProd.baseUnit || 'unit'}s available in stock!`,
-          'error'
+          `Only ${liveProd.stockQuantity} base ${liveProd.baseUnit || "unit"}s available in stock!`,
+          "error",
         );
         return prevCart;
       }
@@ -379,7 +441,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 unitPrice,
                 totalBaseUnits: targetQty * conversionFactor,
               }
-            : item
+            : item,
         );
       }
 
@@ -402,8 +464,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateCartQuantity = (
     productId: string,
     quantity: number,
-    selectedUnit: import('../types').SellingUnitType = 'BASE',
-    priceTier: import('../types').PriceTier = 'RETAIL'
+    selectedUnit: import("../types").SellingUnitType = "BASE",
+    priceTier: import("../types").PriceTier = "RETAIL",
   ) => {
     if (quantity <= 0) {
       removeFromCart(productId, selectedUnit, priceTier);
@@ -417,8 +479,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const match = prev.find(
         (item) =>
           item.product.id === productId &&
-          (item.selectedUnit || 'BASE') === selectedUnit &&
-          (item.priceTier || 'RETAIL') === priceTier
+          (item.selectedUnit || "BASE") === selectedUnit &&
+          (item.priceTier || "RETAIL") === priceTier,
       );
       if (!match) return prev;
 
@@ -430,8 +492,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const requestedTotalBase = otherBaseUnits + quantity * factor;
       if (requestedTotalBase > liveProd.stockQuantity) {
-        const maxUnits = Math.floor((liveProd.stockQuantity - otherBaseUnits) / factor);
-        showToast(`Stock limit reached! Max available: ${maxUnits} ${match.selectedUnitName || 'units'}.`, 'error');
+        const maxUnits = Math.floor(
+          (liveProd.stockQuantity - otherBaseUnits) / factor,
+        );
+        showToast(
+          `Stock limit reached! Max available: ${maxUnits} ${match.selectedUnitName || "units"}.`,
+          "error",
+        );
         quantity = Math.max(1, maxUnits);
       }
 
@@ -442,23 +509,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               quantity,
               totalBaseUnits: quantity * factor,
             }
-          : item
+          : item,
       );
     });
   };
 
   const removeFromCart = (
     productId: string,
-    selectedUnit?: import('../types').SellingUnitType,
-    priceTier?: import('../types').PriceTier
+    selectedUnit?: import("../types").SellingUnitType,
+    priceTier?: import("../types").PriceTier,
   ) => {
     setCart((prev) =>
       prev.filter((item) => {
         if (item.product.id !== productId) return true;
-        if (selectedUnit && (item.selectedUnit || 'BASE') !== selectedUnit) return true;
-        if (priceTier && (item.priceTier || 'RETAIL') !== priceTier) return true;
+        if (selectedUnit && (item.selectedUnit || "BASE") !== selectedUnit)
+          return true;
+        if (priceTier && (item.priceTier || "RETAIL") !== priceTier)
+          return true;
         return false;
-      })
+      }),
     );
   };
 
@@ -467,14 +536,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDiscount(0);
   };
 
-  const setDiscountVal = (val: number, type: 'fixed' | 'percentage') => {
+  const setDiscountVal = (val: number, type: "fixed" | "percentage") => {
     setDiscount(Math.max(0, val));
     setDiscountType(type);
   };
 
   const clearDiscount = () => {
     setDiscount(0);
-    setDiscountType('fixed');
+    setDiscountType("fixed");
   };
 
   const cartSubtotal = useMemo(() => {
@@ -487,7 +556,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const discountAmount = useMemo(() => {
     if (discount <= 0 || cartSubtotal <= 0) return 0;
-    if (discountType === 'percentage') {
+    if (discountType === "percentage") {
       return Math.round((cartSubtotal * Math.min(100, discount)) / 100);
     }
     return Math.min(cartSubtotal, discount);
@@ -507,28 +576,117 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     paymentMethod: PaymentMethod;
     amountPaid: number;
     paymentReference?: string;
+    paymentConfirmed?: boolean;
   }): Promise<Sale> => {
     try {
-      const sale = db.createSale({
-        items: cart,
-        subtotal: cartSubtotal,
-        discount: discountAmount,
-        discountType,
-        paymentMethod: params.paymentMethod,
-        amountPaid: params.amountPaid,
-        paymentReference: params.paymentReference,
-        actor: currentUser,
-      });
+      if (!sessionCheckComplete)
+        throw new Error(
+          "Checking your sign-in session. Please retry checkout in a moment.",
+        );
+      if (!isServerAuthenticated && api.getToken()) {
+        throw new Error(
+          "Your server session could not be verified. Sign in again before recording a sale.",
+        );
+      }
+      let sale: Sale;
+      if (isServerAuthenticated) {
+        if (!serverUser)
+          throw new Error(
+            "Your server session is not ready. Please sign in again.",
+          );
+        const payload = {
+          items: cart.map((item) => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+            sellingUnit: item.selectedUnit || "BASE",
+            priceTier: item.priceTier || "RETAIL",
+          })),
+          discount: { value: discount, type: discountType },
+          paymentMethod: params.paymentMethod,
+          amountPaid: params.amountPaid,
+          paymentReference: params.paymentReference,
+          paymentConfirmed: params.paymentConfirmed,
+        } as const;
+        const fingerprint = JSON.stringify(payload);
+        let pending = checkoutRequestRef.current;
+        if (!pending && typeof window !== "undefined") {
+          try {
+            pending = JSON.parse(
+              localStorage.getItem("hs_checkout_pending") || "null",
+            ) as typeof pending;
+          } catch {
+            pending = null;
+          }
+        }
+        if (pending && pending.fingerprint !== fingerprint) {
+          throw new Error(
+            "The previous checkout outcome is not confirmed. Retry it without changing the cart or payment details.",
+          );
+        }
+        if (!pending) {
+          const key =
+            globalThis.crypto?.randomUUID?.() ||
+            `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          pending = { fingerprint, key };
+        }
+        checkoutRequestRef.current = pending;
+        if (typeof window !== "undefined")
+          localStorage.setItem("hs_checkout_pending", JSON.stringify(pending));
+
+        try {
+          sale = await api.createSale(payload, pending.key);
+        } catch (error) {
+          const status = (error as { status?: number }).status;
+          if (status !== undefined && status < 500) {
+            checkoutRequestRef.current = null;
+            if (typeof window !== "undefined")
+              localStorage.removeItem("hs_checkout_pending");
+          }
+          throw error;
+        }
+        setDbState((prev) => ({
+          ...prev,
+          sales: [
+            sale,
+            ...prev.sales.filter((existing) => existing.id !== sale.id),
+          ],
+        }));
+        checkoutRequestRef.current = null;
+        if (typeof window !== "undefined")
+          localStorage.removeItem("hs_checkout_pending");
+        await syncCatalogFromApi();
+        api
+          .getSales()
+          .then((sales) => setDbState((prev) => ({ ...prev, sales })))
+          .catch(() => undefined);
+        if (serverUser.role === "ADMIN") {
+          api
+            .getAuditLogs()
+            .then((auditLogs) => setDbState((prev) => ({ ...prev, auditLogs })))
+            .catch(() => undefined);
+        }
+      } else {
+        sale = db.createSale({
+          items: cart,
+          subtotal: cartSubtotal,
+          discount: discountAmount,
+          discountType,
+          paymentMethod: params.paymentMethod,
+          amountPaid: params.amountPaid,
+          paymentReference: params.paymentReference,
+          actor: currentUser,
+        });
+      }
 
       // Clear cart on successful transaction
       setCart([]);
       setDiscount(0);
       setActiveReceipt(sale);
-      showToast(`Sale completed! Receipt #${sale.receiptNumber}`, 'success');
+      showToast(`Sale completed! Receipt #${sale.receiptNumber}`, "success");
       return sale;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Transaction failed.';
-      showToast(msg, 'error');
+      const msg = e instanceof Error ? e.message : "Transaction failed.";
+      showToast(msg, "error");
       throw e;
     }
   };
@@ -536,7 +694,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const receiveStock = async (params: {
     productId: string;
     quantity: number;
-    sellingUnit?: import('../types').SellingUnitType;
+    sellingUnit?: import("../types").SellingUnitType;
     supplier?: string;
     note?: string;
     unitCost?: number;
@@ -549,9 +707,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         db.receiveStock({ ...params, actor: currentUser });
       }
-      showToast(`Stock replenished (+${params.quantity} units)`, 'success');
+      showToast(`Stock replenished (+${params.quantity} units)`, "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to receive stock', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to receive stock",
+        "error",
+      );
       throw e;
     }
   };
@@ -559,7 +720,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const adjustStock = async (params: {
     productId: string;
     newQuantity: number;
-    reason: 'ADJUSTMENT' | 'DAMAGED' | 'RETURN';
+    reason: "ADJUSTMENT" | "DAMAGED" | "RETURN";
     note: string;
   }) => {
     try {
@@ -569,48 +730,62 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         db.adjustStock({ ...params, actor: currentUser });
       }
-      showToast(`Stock updated to ${params.newQuantity} units`, 'success');
+      showToast(`Stock updated to ${params.newQuantity} units`, "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to adjust stock', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to adjust stock",
+        "error",
+      );
       throw e;
     }
   };
 
   const createProduct = async (
-    data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'> & { openingStock?: number }
+    data: Omit<Product, "id" | "createdAt" | "updatedAt"> & {
+      openingStock?: number;
+    },
   ): Promise<Product> => {
     try {
       if (isServerAuthenticated) {
         const prod = await api.createProduct(data);
         if (prod) {
           await syncCatalogFromApi();
-          showToast(`Product "${prod.name}" added to catalogue`, 'success');
+          showToast(`Product "${prod.name}" added to catalogue`, "success");
           return prod;
         }
       }
       const p = db.createProduct(data, currentUser);
-      showToast(`Product "${p.name}" added to catalogue`, 'success');
+      showToast(`Product "${p.name}" added to catalogue`, "success");
       return p;
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to create product', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to create product",
+        "error",
+      );
       throw e;
     }
   };
 
-  const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product | void> => {
+  const updateProduct = async (
+    id: string,
+    updates: Partial<Product>,
+  ): Promise<Product | void> => {
     try {
       if (isServerAuthenticated) {
         const prod = await api.updateProduct(id, updates);
         if (prod) {
           await syncCatalogFromApi();
-          showToast('Product details updated on server', 'success');
+          showToast("Product details updated on server", "success");
           return prod;
         }
       }
       db.updateProduct(id, updates, currentUser);
-      showToast('Product details updated', 'success');
+      showToast("Product details updated", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to update product', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to update product",
+        "error",
+      );
       throw e;
     }
   };
@@ -618,25 +793,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleProductActive = (id: string) => {
     try {
       db.toggleProductActive(id, currentUser);
-      showToast('Product status updated', 'success');
+      showToast("Product status updated", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to toggle product status', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to toggle product status",
+        "error",
+      );
       throw e;
     }
   };
 
-  const createCategory = (data: Omit<Category, 'id' | 'createdAt'>) => {
+  const createCategory = (data: Omit<Category, "id" | "createdAt">) => {
     try {
       const c = db.createCategory(data, currentUser);
-      showToast(`Category "${c.name}" created`, 'success');
+      showToast(`Category "${c.name}" created`, "success");
       return c;
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to create category', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to create category",
+        "error",
+      );
       throw e;
     }
   };
 
-  const createUser = (data: Omit<User, 'id' | 'createdAt'>) => {
+  const createUser = (data: Omit<User, "id" | "createdAt">) => {
     try {
       const u = db.createUser(data, currentUser);
       api
@@ -644,15 +825,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           name: data.name,
           email: data.email,
           role: data.role,
-          credential: data.pin || '1234',
+          credential: data.pin || "1234",
         })
         .catch((err) => {
-          console.warn('Server staff creation fallback:', err.message);
+          console.warn("Server staff creation fallback:", err.message);
         });
-      showToast(`Staff member "${u.name}" created`, 'success');
+      showToast(`Staff member "${u.name}" created`, "success");
       return u;
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to create staff member', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to create staff member",
+        "error",
+      );
       throw e;
     }
   };
@@ -668,11 +852,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           active: updates.active,
         })
         .catch((err) => {
-          console.warn('Server staff update fallback:', err.message);
+          console.warn("Server staff update fallback:", err.message);
         });
-      showToast('Staff member updated', 'success');
+      showToast("Staff member updated", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to update staff member', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to update staff member",
+        "error",
+      );
       throw e;
     }
   };
@@ -682,15 +869,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const user = db.getState().users.find((u) => u.id === id);
       db.toggleUserActive(id, currentUser);
       if (user) {
-        api
-          .updateStaff(id, { active: !user.active })
-          .catch((err) => {
-            console.warn('Server staff toggle fallback:', err.message);
-          });
+        api.updateStaff(id, { active: !user.active }).catch((err) => {
+          console.warn("Server staff toggle fallback:", err.message);
+        });
       }
-      showToast('Staff account status updated', 'success');
+      showToast("Staff account status updated", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to update staff status', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to update staff status",
+        "error",
+      );
       throw e;
     }
   };
@@ -698,9 +886,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateSettings = (settings: Partial<BusinessSettings>) => {
     try {
       db.updateSettings(settings, currentUser);
-      showToast('Store settings saved', 'success');
+      showToast("Store settings saved", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to update settings', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to update settings",
+        "error",
+      );
       throw e;
     }
   };
@@ -712,9 +903,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const importDatabase = (json: string) => {
     try {
       db.importDatabase(json, currentUser);
-      showToast('Database imported successfully', 'success');
+      showToast("Database imported successfully", "success");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to import database', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to import database",
+        "error",
+      );
       throw e;
     }
   };
@@ -723,9 +917,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       db.resetDatabase(currentUser);
       clearCart();
-      showToast('Database reset to demonstration defaults', 'info');
+      showToast("Database reset to demonstration defaults", "info");
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to reset database', 'error');
+      showToast(
+        e instanceof Error ? e.message : "Failed to reset database",
+        "error",
+      );
       throw e;
     }
   };
@@ -786,7 +983,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 export const useStore = () => {
   const context = useContext(StoreContext);
   if (!context) {
-    throw new Error('useStore must be used within a StoreProvider');
+    throw new Error("useStore must be used within a StoreProvider");
   }
   return context;
 };

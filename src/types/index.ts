@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'CASHIER' | 'INVENTORY';
+export type UserRole = "ADMIN" | "CASHIER" | "INVENTORY";
 
 export interface User {
   id: string;
@@ -18,8 +18,8 @@ export interface Category {
   createdAt: string;
 }
 
-export type SellingUnitType = 'BASE' | 'PACK' | 'CARTON';
-export type PriceTier = 'RETAIL' | 'WHOLESALE';
+export type SellingUnitType = "BASE" | "PACK" | "CARTON";
+export type PriceTier = "RETAIL" | "WHOLESALE";
 
 export interface Product {
   id: string;
@@ -52,7 +52,13 @@ export interface Product {
   updatedAt: string;
 }
 
-export type StockMovementType = 'RECEIVED' | 'SALE' | 'ADJUSTMENT' | 'DAMAGED' | 'RETURN' | 'OPENING_STOCK';
+export type StockMovementType =
+  | "RECEIVED"
+  | "SALE"
+  | "ADJUSTMENT"
+  | "DAMAGED"
+  | "RETURN"
+  | "OPENING_STOCK";
 
 export interface StockMovement {
   id: string;
@@ -71,7 +77,7 @@ export interface StockMovement {
   timestamp: string;
 }
 
-export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'POS_CARD';
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "POS_CARD";
 
 export interface CartItem {
   product: Product;
@@ -93,6 +99,10 @@ export interface SaleItem {
   unitPrice: number;
   costPriceSnapshot?: number;
   lineTotal: number;
+  sellingUnit?: SellingUnitType;
+  sellingUnitName?: string;
+  conversionFactor?: number;
+  priceTier?: PriceTier;
 }
 
 export interface Sale {
@@ -103,7 +113,7 @@ export interface Sale {
   items: SaleItem[];
   subtotal: number;
   discount: number;
-  discountType: 'fixed' | 'percentage';
+  discountType: "fixed" | "percentage";
   taxAmount: number;
   total: number;
   amountPaid: number;
@@ -111,7 +121,7 @@ export interface Sale {
   paymentMethod: PaymentMethod;
   paymentReference?: string;
   paymentConfirmedBy?: string;
-  status: 'COMPLETED' | 'CANCELLED';
+  status: "COMPLETED" | "CANCELLED";
   createdAt: string;
   idempotencyKey?: string;
 }
@@ -121,26 +131,33 @@ export interface AuditLog {
   userId: string;
   userName: string;
   actionType:
-    | 'PRICE_CHANGE'
-    | 'STOCK_ADJUSTMENT'
-    | 'STOCK_RECEIVE'
-    | 'STAFF_UPDATE'
-    | 'PRODUCT_CREATE'
-    | 'PRODUCT_UPDATE'
-    | 'SETTINGS_CHANGE'
-    | 'SALE_COMPLETED'
-    | 'LOGIN_SUCCESS'
-    | 'LOGIN_FAILED'
-    | 'LOGOUT'
-    | 'LOGIN_LOCKED'
-    | 'LOGIN_BLOCKED'
-    | 'FIRST_OWNER_PROVISIONED'
-    | 'STAFF_CREATE'
-    | 'STAFF_DEACTIVATE'
-    | 'STAFF_ACTIVATE'
-    | 'STAFF_PASSWORD_RESET'
+    | "PRICE_CHANGE"
+    | "STOCK_ADJUSTMENT"
+    | "STOCK_RECEIVE"
+    | "STAFF_UPDATE"
+    | "PRODUCT_CREATE"
+    | "PRODUCT_UPDATE"
+    | "SETTINGS_CHANGE"
+    | "SALE_COMPLETED"
+    | "LOGIN_SUCCESS"
+    | "LOGIN_FAILED"
+    | "LOGOUT"
+    | "LOGIN_LOCKED"
+    | "LOGIN_BLOCKED"
+    | "FIRST_OWNER_PROVISIONED"
+    | "STAFF_CREATE"
+    | "STAFF_DEACTIVATE"
+    | "STAFF_ACTIVATE"
+    | "STAFF_PASSWORD_RESET"
     | string;
-  entityType: 'PRODUCT' | 'USER' | 'SETTINGS' | 'INVENTORY' | 'SALE' | 'AUTH' | string;
+  entityType:
+    | "PRODUCT"
+    | "USER"
+    | "SETTINGS"
+    | "INVENTORY"
+    | "SALE"
+    | "AUTH"
+    | string;
   entityId: string;
   previousValue?: string;
   newValue?: string;

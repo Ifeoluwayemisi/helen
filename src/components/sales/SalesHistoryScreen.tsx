@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { useStore } from '../../context/StoreContext';
-import { Sale, PaymentMethod } from '../../types';
+import React, { useState, useMemo } from "react";
+import { useStore } from "../../context/StoreContext";
+import { Sale, PaymentMethod } from "../../types";
 import {
   Receipt,
   Search,
@@ -14,27 +14,37 @@ import {
   CheckCircle,
   X,
   FileSpreadsheet,
-} from 'lucide-react';
-import { ReceiptModal } from '../receipts/ReceiptModal';
+} from "lucide-react";
+import { ReceiptModal } from "../receipts/ReceiptModal";
 
 export const SalesHistoryScreen: React.FC = () => {
-  const { dbState, currentUser, setActiveReceipt } = useStore();
+  const {
+    dbState,
+    currentUser,
+    serverUser,
+    isServerAuthenticated,
+    setActiveReceipt,
+  } = useStore();
   const { sales, settings } = dbState;
+  const viewer = isServerAuthenticated && serverUser ? serverUser : currentUser;
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [methodFilter, setMethodFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week'>('all');
-  const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [methodFilter, setMethodFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<
+    "all" | "today" | "yesterday" | "week"
+  >("all");
+  const [selectedSaleForDetails, setSelectedSaleForDetails] =
+    useState<Sale | null>(null);
 
   // Cashier role restriction check (PRD Section 7: cashiers view own sales or approved scope)
-  const isCashier = currentUser.role === 'CASHIER';
+  const isCashier = viewer.role === "CASHIER";
   const visibleSales = useMemo(() => {
     if (isCashier) {
       // Show sales completed by this cashier
-      return sales.filter((s) => s.cashierId === currentUser.id);
+      return sales.filter((s) => s.cashierId === viewer.id);
     }
     return sales;
-  }, [sales, isCashier, currentUser.id]);
+  }, [sales, isCashier, viewer.id]);
 
   const filteredSales = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -47,13 +57,15 @@ export const SalesHistoryScreen: React.FC = () => {
 
     return visibleSales.filter((sale) => {
       // Payment filter
-      if (methodFilter !== 'all' && sale.paymentMethod !== methodFilter) return false;
+      if (methodFilter !== "all" && sale.paymentMethod !== methodFilter)
+        return false;
 
       // Date filter
       const saleDate = sale.createdAt.slice(0, 10);
-      if (dateFilter === 'today' && saleDate !== todayStr) return false;
-      if (dateFilter === 'yesterday' && saleDate !== yesterdayStr) return false;
-      if (dateFilter === 'week' && new Date(sale.createdAt) < sevenDaysAgo) return false;
+      if (dateFilter === "today" && saleDate !== todayStr) return false;
+      if (dateFilter === "yesterday" && saleDate !== yesterdayStr) return false;
+      if (dateFilter === "week" && new Date(sale.createdAt) < sevenDaysAgo)
+        return false;
 
       // Search query
       if (searchQuery.trim()) {
@@ -61,7 +73,8 @@ export const SalesHistoryScreen: React.FC = () => {
         return (
           sale.receiptNumber.toLowerCase().includes(q) ||
           sale.cashierName.toLowerCase().includes(q) ||
-          (sale.paymentReference && sale.paymentReference.toLowerCase().includes(q)) ||
+          (sale.paymentReference &&
+            sale.paymentReference.toLowerCase().includes(q)) ||
           sale.items.some((i) => i.productName.toLowerCase().includes(q))
         );
       }
@@ -85,18 +98,22 @@ export const SalesHistoryScreen: React.FC = () => {
             </h2>
             <p className="text-xs text-slate-500">
               {isCashier
-                ? `Showing transactions processed by ${currentUser.name}`
-                : 'Central register of completed customer transactions and audit receipts'}
+                ? `Showing transactions processed by ${viewer.name}`
+                : "Central register of completed customer transactions and audit receipts"}
             </p>
           </div>
 
           <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-            <span className="text-[11px] font-semibold text-emerald-800">Filtered Total:</span>
+            <span className="text-[11px] font-semibold text-emerald-800">
+              Filtered Total:
+            </span>
             <span className="text-sm font-extrabold text-emerald-950">
-              {settings.currency}{totalRevenue.toLocaleString()}
+              {settings.currency}
+              {totalRevenue.toLocaleString()}
             </span>
             <span className="text-xs text-emerald-700 font-medium">
-              ({filteredSales.length} {filteredSales.length === 1 ? 'sale' : 'sales'})
+              ({filteredSales.length}{" "}
+              {filteredSales.length === 1 ? "sale" : "sales"})
             </span>
           </div>
         </div>
@@ -118,33 +135,41 @@ export const SalesHistoryScreen: React.FC = () => {
             {/* Date filter pills */}
             <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl">
               <button
-                onClick={() => setDateFilter('all')}
+                onClick={() => setDateFilter("all")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                  dateFilter === "all"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600"
                 }`}
               >
                 All Time
               </button>
               <button
-                onClick={() => setDateFilter('today')}
+                onClick={() => setDateFilter("today")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilter === 'today' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                  dateFilter === "today"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600"
                 }`}
               >
                 Today
               </button>
               <button
-                onClick={() => setDateFilter('yesterday')}
+                onClick={() => setDateFilter("yesterday")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilter === 'yesterday' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                  dateFilter === "yesterday"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600"
                 }`}
               >
                 Yesterday
               </button>
               <button
-                onClick={() => setDateFilter('week')}
+                onClick={() => setDateFilter("week")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilter === 'week' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                  dateFilter === "week"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600"
                 }`}
               >
                 Last 7 Days
@@ -190,51 +215,71 @@ export const SalesHistoryScreen: React.FC = () => {
                   </tr>
                 ) : (
                   filteredSales.map((sale) => {
-                    const formattedTime = new Date(sale.createdAt).toLocaleString('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
+                    const formattedTime = new Date(
+                      sale.createdAt,
+                    ).toLocaleString("en-GB", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
                     });
 
                     return (
-                      <tr key={sale.id} className="hover:bg-slate-50/70 transition">
+                      <tr
+                        key={sale.id}
+                        className="hover:bg-slate-50/70 transition"
+                      >
                         <td className="py-3 px-4">
                           <div className="font-mono font-bold text-slate-900 text-xs">
                             {sale.receiptNumber}
                           </div>
-                          <div className="text-[10px] text-slate-400">{formattedTime}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {formattedTime}
+                          </div>
                         </td>
                         <td className="py-3 px-3 font-medium text-slate-700">
                           {sale.cashierName}
                         </td>
                         <td className="py-3 px-3">
                           <div className="text-slate-800 line-clamp-1 max-w-xs">
-                            {sale.items.map((i) => `${i.productName} (${i.quantity})`).join(', ')}
+                            {sale.items
+                              .map(
+                                (i) =>
+                                  `${i.productName} (${i.quantity}${i.sellingUnitName ? ` ${i.sellingUnitName}` : ""})`,
+                              )
+                              .join(", ")}
                           </div>
                           <div className="text-[10px] text-slate-400">
-                            {sale.items.reduce((acc, i) => acc + i.quantity, 0)} total units
+                            {sale.items.reduce((acc, i) => acc + i.quantity, 0)}{" "}
+                            selling units
                           </div>
                         </td>
                         <td className="py-3 px-3">
                           <span
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                              sale.paymentMethod === 'CASH'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : sale.paymentMethod === 'BANK_TRANSFER'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-purple-100 text-purple-800'
+                              sale.paymentMethod === "CASH"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : sale.paymentMethod === "BANK_TRANSFER"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-purple-100 text-purple-800"
                             }`}
                           >
-                            {sale.paymentMethod === 'CASH' && <Banknote className="w-3 h-3" />}
-                            {sale.paymentMethod === 'BANK_TRANSFER' && <Building2 className="w-3 h-3" />}
-                            {sale.paymentMethod === 'POS_CARD' && <CreditCard className="w-3 h-3" />}
+                            {sale.paymentMethod === "CASH" && (
+                              <Banknote className="w-3 h-3" />
+                            )}
+                            {sale.paymentMethod === "BANK_TRANSFER" && (
+                              <Building2 className="w-3 h-3" />
+                            )}
+                            {sale.paymentMethod === "POS_CARD" && (
+                              <CreditCard className="w-3 h-3" />
+                            )}
                             {sale.paymentMethod}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right font-extrabold text-slate-900 text-sm">
-                          {settings.currency}{sale.total.toLocaleString()}
+                          {settings.currency}
+                          {sale.total.toLocaleString()}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -275,7 +320,9 @@ export const SalesHistoryScreen: React.FC = () => {
                   {selectedSaleForDetails.receiptNumber}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {new Date(selectedSaleForDetails.createdAt).toLocaleString('en-GB')}
+                  {new Date(selectedSaleForDetails.createdAt).toLocaleString(
+                    "en-GB",
+                  )}
                 </p>
               </div>
               <button
@@ -290,16 +337,24 @@ export const SalesHistoryScreen: React.FC = () => {
               <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
                   <span className="text-slate-500 block">Cashier</span>
-                  <span className="font-bold text-slate-900">{selectedSaleForDetails.cashierName}</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedSaleForDetails.cashierName}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Payment Method</span>
-                  <span className="font-bold text-slate-900">{selectedSaleForDetails.paymentMethod}</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedSaleForDetails.paymentMethod}
+                  </span>
                 </div>
                 {selectedSaleForDetails.paymentReference && (
                   <div className="col-span-2 pt-1 border-t border-slate-200">
-                    <span className="text-slate-500 block">Payment Reference</span>
-                    <span className="font-mono text-slate-800">{selectedSaleForDetails.paymentReference}</span>
+                    <span className="text-slate-500 block">
+                      Payment Reference
+                    </span>
+                    <span className="font-mono text-slate-800">
+                      {selectedSaleForDetails.paymentReference}
+                    </span>
                   </div>
                 )}
               </div>
@@ -311,15 +366,22 @@ export const SalesHistoryScreen: React.FC = () => {
                 </div>
                 <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white">
                   {selectedSaleForDetails.items.map((item) => (
-                    <div key={item.id} className="py-2 flex justify-between items-center text-xs">
+                    <div
+                      key={item.id}
+                      className="py-2 flex justify-between items-center text-xs"
+                    >
                       <div>
-                        <div className="font-bold text-slate-900">{item.productName}</div>
+                        <div className="font-bold text-slate-900">
+                          {item.productName}
+                        </div>
                         <div className="text-[10px] text-slate-500">
-                          {item.quantity} × {settings.currency}{item.unitPrice.toLocaleString()}
+                          {item.quantity} × {settings.currency}
+                          {item.unitPrice.toLocaleString()}
                         </div>
                       </div>
                       <div className="font-bold text-slate-900">
-                        {settings.currency}{item.lineTotal.toLocaleString()}
+                        {settings.currency}
+                        {item.lineTotal.toLocaleString()}
                       </div>
                     </div>
                   ))}
@@ -330,30 +392,46 @@ export const SalesHistoryScreen: React.FC = () => {
               <div className="space-y-1.5 pt-2 border-t border-slate-200 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Subtotal</span>
-                  <span>{settings.currency}{selectedSaleForDetails.subtotal.toLocaleString()}</span>
+                  <span>
+                    {settings.currency}
+                    {selectedSaleForDetails.subtotal.toLocaleString()}
+                  </span>
                 </div>
                 {selectedSaleForDetails.discount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-semibold">
                     <span>Discount</span>
-                    <span>-{settings.currency}{selectedSaleForDetails.discount.toLocaleString()}</span>
+                    <span>
+                      -{settings.currency}
+                      {selectedSaleForDetails.discount.toLocaleString()}
+                    </span>
                   </div>
                 )}
                 {selectedSaleForDetails.taxAmount > 0 && (
                   <div className="flex justify-between text-slate-600">
                     <span>VAT</span>
-                    <span>{settings.currency}{selectedSaleForDetails.taxAmount.toLocaleString()}</span>
+                    <span>
+                      {settings.currency}
+                      {selectedSaleForDetails.taxAmount.toLocaleString()}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-1 border-t border-slate-200">
                   <span>Total Paid</span>
-                  <span>{settings.currency}{selectedSaleForDetails.total.toLocaleString()}</span>
+                  <span>
+                    {settings.currency}
+                    {selectedSaleForDetails.total.toLocaleString()}
+                  </span>
                 </div>
-                {selectedSaleForDetails.paymentMethod === 'CASH' && selectedSaleForDetails.changeAmount > 0 && (
-                  <div className="flex justify-between text-emerald-800 font-bold">
-                    <span>Change Returned</span>
-                    <span>{settings.currency}{selectedSaleForDetails.changeAmount.toLocaleString()}</span>
-                  </div>
-                )}
+                {selectedSaleForDetails.paymentMethod === "CASH" &&
+                  selectedSaleForDetails.changeAmount > 0 && (
+                    <div className="flex justify-between text-emerald-800 font-bold">
+                      <span>Change Returned</span>
+                      <span>
+                        {settings.currency}
+                        {selectedSaleForDetails.changeAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
               </div>
             </div>
 
