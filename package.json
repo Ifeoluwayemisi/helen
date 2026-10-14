@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "tsx server/index.ts",
+    "start": "tsx server/index.ts",
     "migrate": "tsx server/db/migrate.ts",
     "db:test:migrate": "tsx -r dotenv/config server/testing/migrate-test-database.ts",
     "build": "vite build",
-    "test:checkout": "tsx --test server/routes/checkout-calculations.test.ts server/routes/sales.routes.test.ts server/testing/test-database.test.ts",
-    "test:integration": "tsx -r dotenv/config --test server/testing/checkout.integration.test.ts",
+    "test:checkout": "tsx --test server/routes/checkout-calculations.test.ts server/routes/sales.routes.test.ts server/routes/auth.routes.test.ts server/testing/test-database.test.ts server/testing/migration-runner.test.ts server/testing/first-owner.test.ts server/testing/admin-policy.test.ts src/services/authFlow.test.ts src/components/auth/FirstOwnerSetup.test.tsx",
+    "test:integration": "tsx -r dotenv/config --test --test-concurrency=1 server/testing/checkout.integration.test.ts server/testing/first-owner.integration.test.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
@@ -30,6 +31,7 @@
     "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "tsx": "^4.21.0",
     "vite": "^8.3.0"
   },
   "devDependencies": {
@@ -42,7 +44,6 @@
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vite-plugin-pwa": "^2.0.0"
   }

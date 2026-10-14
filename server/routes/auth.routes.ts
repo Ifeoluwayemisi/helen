@@ -6,20 +6,24 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_DURATION_MS,
   checkFirstOwnerExists,
+  provisionFirstOwner,
   logSecurityAudit,
 } from "../auth/service";
 import { hashCredential } from "../auth/crypto";
-import { query } from "../db/pool";
+import { getClient } from "../db/pool";
 import { authenticateRequest } from "../middleware/auth";
 import { config } from "../config";
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/auth/login
   fastify.post("/api/auth/login", async (request, reply) => {
-    const { email, credential } = request.body as {
-      email?: string;
-      credential?: string;
+    const body = (request.body ?? {}) as {
+      email?: unknown;
+      credential?: unknown;
     };
+    const email = typeof body.email === "string" ? body.email : "";
+    const credential =
+      typeof body.credential === "string" ? body.credential : "";
 
     if (!email || !email.trim()) {
       return reply
@@ -130,6 +134,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /api/auth/setup-owner (Safe first-owner provisioning)
   fastify.post("/api/auth/setup-owner", async (request, reply) => {
+    // Fast-path guard so a provisioned store rejects immediately. The
+    // authoritative, concurrency-safe check happens inside the locked
+    // transaction in provisionFirstOwner.
     const hasOwner = await checkFirstOwnerExists();
     if (hasOwner) {
       return reply.status(403).send({
@@ -138,11 +145,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const { name, email, credential } = request.body as {
-      name?: string;
-      email?: string;
-      credential?: string;
+    const body = (request.body ?? {}) as {
+      name?: unknown;
+      email?: unknown;
+      credential?: unknown;
     };
+    const name = typeof body.name === "string" ? body.name : "";
+    const email = typeof body.email === "string" ? body.email : "";
+    const credential =
+      typeof body.credential === "string" ? body.credential : "";
 
     if (!name || !name.trim()) {
       return reply
@@ -165,17 +176,30 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     const passwordHash = await hashCredential(credential);
     const userId = `a0000000-0000-0000-0000-000000000001`;
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    await query(
-      `INSERT INTO users (id, name, email, role, active, password_hash)
-       VALUES ($1, $2, $3, 'ADMIN', TRUE, $4)
-       ON CONFLICT (email) DO UPDATE SET password_hash = $4, pin = NULL, active = TRUE;`,
-      [userId, name.trim(), email.trim().toLowerCase(), passwordHash],
-    );
+    const client = await getClient();
+    const { provisioned } = await provisionFirstOwner(client, {
+      userId,
+      name: normalizedName,
+      email: normalizedEmail,
+      passwordHash,
+    });
+
+    // A conflicting id/email (or a concurrently provisioned owner) means we
+    // intentionally did not write anything. Report the same generic message
+    // so the response never reveals whether an account already exists.
+    if (!provisioned) {
+      return reply.status(403).send({
+        success: false,
+        error: "Store owner has already been provisioned.",
+      });
+    }
 
     await logSecurityAudit(
       userId,
-      name.trim(),
+      normalizedName,
       "FIRST_OWNER_PROVISIONED",
       "Initial store owner provisioned",
       request.ip,
@@ -186,8 +210,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       message: "Store owner provisioned successfully.",
       user: {
         id: userId,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        name: normalizedName,
+        email: normalizedEmail,
         role: "ADMIN",
         active: true,
       },

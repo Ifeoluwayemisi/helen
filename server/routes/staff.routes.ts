@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import { requireRole } from "../middleware/auth";
 import { hashCredential } from "../auth/crypto";
 import { logSecurityAudit } from "../auth/service";
+import { wouldRemoveLastActiveAdmin } from "../auth/admin-policy";
 import { query } from "../db/pool";
 import { UserRole } from "../../src/types";
 
@@ -38,12 +39,18 @@ export const staffRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/staff
   fastify.post("/api/staff", async (request, reply) => {
     try {
-      const { name, email, role, credential } = request.body as {
-        name?: string;
-        email?: string;
-        role?: UserRole;
-        credential?: string;
+      const body = (request.body ?? {}) as {
+        name?: unknown;
+        email?: unknown;
+        role?: unknown;
+        credential?: unknown;
       };
+      const name = typeof body.name === "string" ? body.name : "";
+      const email = typeof body.email === "string" ? body.email : "";
+      const role =
+        typeof body.role === "string" ? (body.role as UserRole) : undefined;
+      const credential =
+        typeof body.credential === "string" ? body.credential : "";
 
       if (!name || !name.trim()) {
         return reply
@@ -117,12 +124,44 @@ export const staffRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch("/api/staff/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const { name, email, role, active } = request.body as {
-        name?: string;
-        email?: string;
-        role?: UserRole;
-        active?: boolean;
+      const body = (request.body ?? {}) as {
+        name?: unknown;
+        email?: unknown;
+        role?: unknown;
+        active?: unknown;
       };
+
+      if (body.name !== undefined && typeof body.name !== "string") {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Staff name must be a string." });
+      }
+      if (body.email !== undefined && typeof body.email !== "string") {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Staff email must be a string." });
+      }
+      if (body.active !== undefined && typeof body.active !== "boolean") {
+        return reply.status(400).send({
+          success: false,
+          error: "Active status must be a boolean.",
+        });
+      }
+      if (
+        body.role !== undefined &&
+        (typeof body.role !== "string" ||
+          !["ADMIN", "CASHIER", "INVENTORY"].includes(body.role))
+      ) {
+        return reply.status(400).send({
+          success: false,
+          error: "Valid role is required (ADMIN, CASHIER, INVENTORY).",
+        });
+      }
+
+      const name = body.name as string | undefined;
+      const email = body.email as string | undefined;
+      const role = body.role as UserRole | undefined;
+      const active = body.active as boolean | undefined;
 
       // Check user exists
       const existingRes = await query(
@@ -156,6 +195,36 @@ export const staffRoutes: FastifyPluginAsync = async (fastify) => {
         email !== undefined ? email.trim().toLowerCase() : existing.email;
       const updatedRole = role !== undefined ? role : existing.role;
       const updatedActive = active !== undefined ? active : existing.active;
+
+      // Never allow the store to be left with zero active administrators:
+      // deactivating or demoting the final active admin would strand the
+      // terminal with no way to sign in.
+      const removesActiveAdmin =
+        existing.role === "ADMIN" &&
+        existing.active &&
+        (updatedRole !== "ADMIN" || updatedActive === false);
+      if (removesActiveAdmin) {
+        const activeAdminRes = await query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM users WHERE role = 'ADMIN' AND active = TRUE;`,
+        );
+        if (
+          wouldRemoveLastActiveAdmin(
+            {
+              role: existing.role,
+              active: Boolean(existing.active),
+            },
+            updatedRole,
+            updatedActive,
+            Number(activeAdminRes.rows[0].count),
+          )
+        ) {
+          return reply.status(400).send({
+            success: false,
+            error:
+              "Cannot deactivate or demote the last active administrator. Add or activate another admin first.",
+          });
+        }
+      }
 
       const res = await query(
         `UPDATE users
@@ -199,7 +268,9 @@ export const staffRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch("/api/staff/:id/credential", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const { credential } = request.body as { credential?: string };
+      const body = (request.body ?? {}) as { credential?: unknown };
+      const credential =
+        typeof body.credential === "string" ? body.credential : "";
 
       if (!credential || credential.trim().length < 4) {
         return reply

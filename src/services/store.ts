@@ -627,66 +627,66 @@ export class DatabaseStore {
   }
 
   private loadState(): DatabaseState {
-    if (import.meta.env.PROD) {
-      return {
-        users: [],
-        currentUser: {
-          id: "unauthenticated",
-          name: "Sign in required",
-          email: "",
-          role: "CASHIER",
-          active: false,
-          createdAt: new Date(0).toISOString(),
-        },
-        categories: [],
-        products: [],
-        sales: [],
-        movements: [],
-        auditLogs: [],
-        settings: {
-          storeName: "",
-          branchName: "",
-          phone: "",
-          address: "",
-          currency: "₦",
-          receiptFooter: "",
-          taxRate: 0,
-          enableTax: false,
-          lowStockGlobalThreshold: 0,
-          timezone: "",
-        },
-      };
-    }
-
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (parsed.users && parsed.products && parsed.sales) {
-          // ensure currentUser exists and is valid
-          const currentUser = parsed.currentUser || parsed.users[0] || DEFAULT_USERS[0];
-          return {
-            ...parsed,
-            currentUser,
-          };
+    if (import.meta.env.DEV) {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (parsed.users && parsed.products && parsed.sales) {
+            // ensure currentUser exists and is valid
+            const currentUser = parsed.currentUser || parsed.users[0] || DEFAULT_USERS[0];
+            return {
+              ...parsed,
+              currentUser,
+            };
+          }
         }
+      } catch (e) {
+        console.warn('Failed to parse saved state, using default database', e);
       }
-    } catch (e) {
-      console.warn('Failed to parse saved state, using default database', e);
+
+      const initialState: DatabaseState = {
+        users: DEFAULT_USERS,
+        currentUser: DEFAULT_USERS[0], // Hellen Olayode (Admin)
+        categories: DEFAULT_CATEGORIES,
+        products: DEFAULT_PRODUCTS,
+        sales: DEFAULT_SALES,
+        movements: DEFAULT_MOVEMENTS,
+        auditLogs: DEFAULT_AUDIT_LOGS,
+        settings: DEFAULT_SETTINGS,
+      };
+      this.saveStateToDisk(initialState);
+      return initialState;
     }
 
-    const initialState: DatabaseState = {
-      users: DEFAULT_USERS,
-      currentUser: DEFAULT_USERS[0], // Hellen Olayode (Admin)
-      categories: DEFAULT_CATEGORIES,
-      products: DEFAULT_PRODUCTS,
-      sales: DEFAULT_SALES,
-      movements: DEFAULT_MOVEMENTS,
-      auditLogs: DEFAULT_AUDIT_LOGS,
-      settings: DEFAULT_SETTINGS,
+    return {
+      users: [],
+      currentUser: {
+        id: "unauthenticated",
+        name: "Sign in required",
+        email: "",
+        role: "CASHIER",
+        active: false,
+        createdAt: new Date(0).toISOString(),
+      },
+      categories: [],
+      products: [],
+      sales: [],
+      movements: [],
+      auditLogs: [],
+      settings: {
+        storeName: "",
+        branchName: "",
+        phone: "",
+        address: "",
+        currency: "₦",
+        receiptFooter: "",
+        taxRate: 0,
+        enableTax: false,
+        lowStockGlobalThreshold: 0,
+        timezone: "",
+      },
     };
-    this.saveStateToDisk(initialState);
-    return initialState;
   }
 
   private saveStateToDisk(state: DatabaseState) {
@@ -1243,25 +1243,29 @@ export class DatabaseStore {
   }
 
   public resetDatabase(actor: User) {
-    this.state = {
-      users: DEFAULT_USERS,
-      currentUser: DEFAULT_USERS[0],
-      categories: DEFAULT_CATEGORIES,
-      products: DEFAULT_PRODUCTS,
-      sales: DEFAULT_SALES,
-      movements: DEFAULT_MOVEMENTS,
-      auditLogs: DEFAULT_AUDIT_LOGS,
-      settings: DEFAULT_SETTINGS,
-    };
-    this.logAudit({
-      userId: actor.id,
-      userName: actor.name,
-      actionType: 'SETTINGS_CHANGE',
-      entityType: 'SETTINGS',
-      entityId: 'database_reset',
-      details: 'Reset system database to factory default demonstration data',
-    });
-    this.notify();
+    if (import.meta.env.DEV) {
+      this.state = {
+        users: DEFAULT_USERS,
+        currentUser: DEFAULT_USERS[0],
+        categories: DEFAULT_CATEGORIES,
+        products: DEFAULT_PRODUCTS,
+        sales: DEFAULT_SALES,
+        movements: DEFAULT_MOVEMENTS,
+        auditLogs: DEFAULT_AUDIT_LOGS,
+        settings: DEFAULT_SETTINGS,
+      };
+      this.logAudit({
+        userId: actor.id,
+        userName: actor.name,
+        actionType: 'SETTINGS_CHANGE',
+        entityType: 'SETTINGS',
+        entityId: 'database_reset',
+        details: 'Reset system database to factory default demonstration data',
+      });
+      this.notify();
+      return;
+    }
+    throw new Error('Resetting demonstration data is disabled in production.');
   }
 }
 

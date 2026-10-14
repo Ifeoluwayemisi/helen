@@ -2,10 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { PoolClient } from "pg";
 
+export interface MigrationRunOptions {
+  skip?: (filename: string) => boolean;
+}
+
 export async function applyMigrations(
   client: PoolClient,
   migrationsDirectory: string,
   report: (message: string) => void = console.log,
+  options: MigrationRunOptions = {},
 ): Promise<string[]> {
   const files = fs
     .readdirSync(migrationsDirectory)
@@ -32,8 +37,13 @@ export async function applyMigrations(
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id SERIAL PRIMARY KEY,
       filename VARCHAR(255) NOT NULL UNIQUE,
+      skipped BOOLEAN NOT NULL DEFAULT FALSE,
       executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await client.query(`
+    ALTER TABLE schema_migrations
+      ADD COLUMN IF NOT EXISTS skipped BOOLEAN NOT NULL DEFAULT FALSE
   `);
   const history = await client.query<{ filename: string }>(
     "SELECT filename FROM schema_migrations",
@@ -43,6 +53,15 @@ export async function applyMigrations(
   for (const file of files) {
     if (executed.has(file)) {
       report(`[Skipped] ${file} (already recorded)`);
+      continue;
+    }
+    if (options.skip?.(file)) {
+      report(`[Skipped] ${file} (excluded by this environment's migration policy)`);
+      await client.query(
+        `INSERT INTO schema_migrations (filename, skipped) VALUES ($1, TRUE)
+         ON CONFLICT (filename) DO NOTHING`,
+        [file],
+      );
       continue;
     }
     const sql = fs.readFileSync(path.join(migrationsDirectory, file), "utf8");

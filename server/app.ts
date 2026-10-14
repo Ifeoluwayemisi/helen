@@ -31,18 +31,23 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Health endpoint: GET /api/health
   app.get("/api/health", async (_request, reply) => {
     const dbStatus = await checkDatabaseConnection();
+    const isProduction = config.nodeEnv === "production";
 
     return reply.status(200).send({
       status: "ok",
       service: "hellen-store-api",
       version: "1.0.0",
       timestamp: new Date().toISOString(),
-      environment: config.nodeEnv,
+      environment: isProduction ? undefined : config.nodeEnv,
       database: {
         configured: Boolean(config.databaseUrl),
         connected: dbStatus.connected,
         latencyMs: dbStatus.latencyMs,
-        error: dbStatus.error,
+        error: isProduction
+          ? dbStatus.connected
+            ? undefined
+            : "Database unavailable"
+          : dbStatus.error,
       },
     });
   });

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { OfflineIndicator } from '../common/OfflineIndicator';
+import { FirstOwnerSetupModal } from '../auth/FirstOwnerSetup';
+import { OwnerSetupInput } from '../../services/authFlow';
 
 interface AppShellProps {
   currentTab: string;
@@ -43,6 +45,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     isServerAuthenticated,
     loginToServer,
     logoutFromServer,
+    requiresOwnerSetup,
+    setupOwner,
   } = useStore();
   const { settings, users, products } = dbState;
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -53,6 +57,28 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [loginCredential, setLoginCredential] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // First-owner provisioning modal state
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  const handleOwnerSetupSubmit = async (input: OwnerSetupInput) => {
+    setSetupError(null);
+    setSetupLoading(true);
+    try {
+      const res = await setupOwner(input);
+      if (res.success) {
+        setLoginEmail(input.email);
+        setLoginCredential('');
+        setLoginError(null);
+        setIsLoginModalOpen(true);
+      } else {
+        setSetupError(res.error || 'Store owner setup failed.');
+      }
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,6 +375,15 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
       )}
 
+      {/* MODAL: FIRST-OWNER PROVISIONING (shown only until an owner exists) */}
+      {requiresOwnerSetup && (
+        <FirstOwnerSetupModal
+          submitting={setupLoading}
+          error={setupError}
+          onSubmit={handleOwnerSetupSubmit}
+        />
+      )}
+
       {/* MODAL: STAFF SESSION AUTHENTICATION */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
@@ -379,20 +414,15 @@ export const AppShell: React.FC<AppShellProps> = ({
               )}
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Staff Member</label>
-                <select
+                <label className="block font-bold text-slate-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="you@example.com"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium"
-                >
-                  {users
-                    .filter((u) => u.active)
-                    .map((u) => (
-                      <option key={u.id} value={u.email}>
-                        {u.name} ({u.role}) — {u.email}
-                      </option>
-                    ))}
-                </select>
+                />
               </div>
 
               <div>
@@ -406,9 +436,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                   autoFocus
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-mono tracking-widest"
                 />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Demo PINs: Hellen (Admin) 1234 · Blessing (Cashier) 0000 · Emeka (Inventory) 5555
-                </span>
+                {!import.meta.env.PROD && (
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Demo PINs: Hellen (Admin) 1234 · Blessing (Cashier) 0000 · Emeka (Inventory) 5555
+                  </span>
+                )}
               </div>
 
               <div className="flex gap-2 pt-2 border-t border-slate-100">

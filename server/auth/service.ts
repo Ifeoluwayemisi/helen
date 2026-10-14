@@ -1,4 +1,4 @@
-import { query } from "../db/pool";
+import { query, getClient } from "../db/pool";
 import {
   generateSessionToken,
   hashSessionToken,
@@ -11,6 +11,14 @@ export const SESSION_COOKIE_NAME = "hs_session";
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_MINUTES = 15;
+
+/**
+ * Single, uniform login failure message. Returned for every failure mode
+ * (unknown account, wrong credential, deactivated, locked) so responses can
+ * never be used to enumerate which accounts exist. The specific reason is
+ * retained only in the security audit log.
+ */
+export const GENERIC_LOGIN_ERROR = "Invalid email or credential";
 
 export interface AuthSession {
   sessionId: string;
@@ -140,7 +148,7 @@ export async function authenticateCredentials(
       `Login failed: Unknown account ${normalizedEmail}`,
       ipAddress,
     );
-    return { success: false, error: "Invalid email or credential" };
+    return { success: false, error: GENERIC_LOGIN_ERROR };
   }
 
   const user = userRes.rows[0];
@@ -155,11 +163,7 @@ export async function authenticateCredentials(
       `Login blocked: Account is deactivated`,
       ipAddress,
     );
-    return {
-      success: false,
-      error:
-        "This account has been deactivated. Please contact the store owner.",
-    };
+    return { success: false, error: GENERIC_LOGIN_ERROR };
   }
 
   // Check lockout status
@@ -174,10 +178,7 @@ export async function authenticateCredentials(
       `Login attempt on locked account (${remainingMins} mins remaining)`,
       ipAddress,
     );
-    return {
-      success: false,
-      error: `Account temporarily locked due to repeated failed attempts. Please retry in ${remainingMins} minute(s).`,
-    };
+    return { success: false, error: GENERIC_LOGIN_ERROR };
   }
 
   // Verify credential (first check password_hash via scrypt, fallback to pin comparison)
@@ -219,17 +220,7 @@ export async function authenticateCredentials(
       ipAddress,
     );
 
-    if (attempts >= MAX_FAILED_ATTEMPTS) {
-      return {
-        success: false,
-        error: `Account locked for ${LOCKOUT_MINUTES} minutes due to ${MAX_FAILED_ATTEMPTS} consecutive failed attempts.`,
-      };
-    }
-
-    return {
-      success: false,
-      error: `Invalid email or credential. (${MAX_FAILED_ATTEMPTS - attempts} attempts remaining)`,
-    };
+    return { success: false, error: GENERIC_LOGIN_ERROR };
   }
 
   // Successful authentication -> Reset failed attempts
@@ -283,11 +274,88 @@ export async function logSecurityAudit(
 }
 
 /**
- * Checks whether an initial Administrator account exists.
+ * Checks whether the store already has an Administrator account.
+ *
+ * Counts admins regardless of `active` so that temporarily deactivating the
+ * owner can never re-open first-owner provisioning (which could otherwise
+ * create a second admin or strand the terminal at an unusable setup screen).
  */
 export async function checkFirstOwnerExists(): Promise<boolean> {
   const res = await query(
-    `SELECT id FROM users WHERE role = 'ADMIN' AND active = true LIMIT 1;`,
+    `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1;`,
   );
   return (res.rowCount ?? 0) > 0;
+}
+
+/**
+ * Stable advisory-lock key that serializes first-owner provisioning across
+ * concurrent requests and server instances sharing one database.
+ */
+export const FIRST_OWNER_SETUP_LOCK_KEY = 762001001;
+
+/**
+ * Minimal structural view of a pooled PostgreSQL client used for
+ * first-owner provisioning. Kept narrow so the atomic logic can be exercised
+ * without a real database.
+ */
+export interface ProvisionQueryClient {
+  query(
+    text: string,
+    params?: unknown[],
+  ): Promise<{ rowCount: number | null; rows?: unknown[] }>;
+  release(): void;
+}
+
+/**
+ * Atomically provisions the single initial store owner.
+ *
+ * Concurrency guarantees (all enforced by the database, not a prior SELECT):
+ * - `pg_advisory_xact_lock` serializes competing provisioning attempts for the
+ *   duration of the transaction, so only the first can observe "no owner".
+ * - `ON CONFLICT DO NOTHING` never updates an existing row, so a conflicting
+ *   id or email can never overwrite existing credentials; the attempt simply
+ *   reports `provisioned: false`.
+ *
+ * Any existing Administrator (active or not) blocks provisioning, matching
+ * `checkFirstOwnerExists`.
+ */
+export async function provisionFirstOwner(
+  client: ProvisionQueryClient,
+  params: {
+    userId: string;
+    name: string;
+    email: string;
+    passwordHash: string;
+  },
+): Promise<{ provisioned: boolean }> {
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [
+      FIRST_OWNER_SETUP_LOCK_KEY,
+    ]);
+
+    const existing = await client.query(
+      `SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1;`,
+    );
+    if ((existing.rowCount ?? 0) > 0) {
+      await client.query("COMMIT");
+      return { provisioned: false };
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO users (id, name, email, role, active, password_hash)
+       VALUES ($1, $2, $3, 'ADMIN', TRUE, $4)
+       ON CONFLICT DO NOTHING
+       RETURNING id;`,
+      [params.userId, params.name, params.email, params.passwordHash],
+    );
+
+    await client.query("COMMIT");
+    return { provisioned: (inserted.rowCount ?? 0) > 0 };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

@@ -1,8 +1,17 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
+
+// The repository's .env sets NODE_ENV=development so the API dev server can run.
+// Vite would otherwise consume that value for `vite build`, emitting a development
+// client bundle (dev React runtime + every `import.meta.env.PROD` guard bypassed).
+// Force production mode for builds regardless of .env, without editing .env.
+if (process.argv.includes('build')) {
+  process.env.NODE_ENV = 'production';
+  process.env.VITE_USER_NODE_ENV = 'production';
+}
 
 function fastifyApiPlugin() {
   let fastifyAppPromise: Promise<any> | null = null;
@@ -54,17 +63,10 @@ function fastifyApiPlugin() {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
   if (mode === 'production') {
-    if (!env.COOKIE_SECRET || env.COOKIE_SECRET.length < 32) {
-      throw new Error('Production builds require COOKIE_SECRET with at least 32 characters.');
-    }
-    if (!env.CORS_ORIGINS?.trim()) {
-      throw new Error('Production builds require CORS_ORIGINS with approved frontend origins.');
-    }
-    if (!env.DATABASE_URL?.trim()) {
-      throw new Error('Production builds require a server-side DATABASE_URL.');
-    }
+    console.warn(
+      '[build] This frontend build does not consume server secrets. The API server separately requires COOKIE_SECRET, CORS_ORIGINS, and DATABASE_URL at startup and fails closed if they are missing or invalid.',
+    );
   }
   return {
     plugins: [

@@ -291,6 +291,8 @@ describe("PostgreSQL checkout integration", () => {
     const setCookie = login.headers["set-cookie"];
     const loginCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
     assert.ok(loginCookie, "login should set the HTTP-only session cookie");
+    assert.match(loginCookie, /HttpOnly/i);
+    assert.match(loginCookie, /SameSite=Lax/i);
     const cookieHeader = loginCookie.split(";")[0];
     const me = await app.inject({
       method: "GET",
@@ -310,6 +312,20 @@ describe("PostgreSQL checkout integration", () => {
       headers: { cookie: cookieHeader },
     });
     assert.equal(loggedOut.statusCode, 401);
+
+    const failedLogin = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        email: `cashier-${runId}@integration.invalid`,
+        credential: "definitely-not-the-password",
+      },
+    });
+    assert.equal(failedLogin.statusCode, 401, failedLogin.body);
+    assert.equal(failedLogin.headers["set-cookie"], undefined);
+    const body = failedLogin.json();
+    assert.equal(body.success, false);
+    assert.equal(body.error, "Invalid email or credential");
 
     const product = await addProduct({
       stock: 5,

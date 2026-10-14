@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { getClient, closePool } from "./pool";
 import { config } from "../config";
 import { applyMigrations } from "./migration-runner";
+import { isProductionDisabledMigration } from "./migration-policy";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,8 +38,13 @@ async function runMigrations() {
       console.log("⚠️  No migrations directory found at", migrationsDir);
       return;
     }
-    await applyMigrations(client, migrationsDir, (message) =>
-      console.log(`  ${message}`),
+    await applyMigrations(
+      client,
+      migrationsDir,
+      (message) => console.log(`  ${message}`),
+      {
+        skip: (file) => isProductionDisabledMigration(file, config.nodeEnv),
+      },
     );
     console.log("🎉 All migrations completed successfully!");
   } finally {

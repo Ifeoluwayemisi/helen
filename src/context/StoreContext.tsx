@@ -17,6 +17,12 @@ import {
   BusinessSettings,
 } from "../types";
 import { api } from "../services/api";
+import {
+  OwnerSetupInput,
+  SetupStatus,
+  ownerSetupFailureMessage,
+  shouldShowOwnerSetup,
+} from "../services/authFlow";
 
 export interface ApiSyncStatus {
   status: "idle" | "loading" | "synced" | "error";
@@ -130,6 +136,14 @@ interface StoreContextValue {
   logoutFromServer: () => Promise<void>;
   resetStaffCredential: (id: string, credential: string) => Promise<void>;
 
+  // First-owner provisioning (production bootstrap)
+  setupStatus: SetupStatus;
+  requiresOwnerSetup: boolean;
+  refreshSetupStatus: () => Promise<void>;
+  setupOwner: (
+    data: OwnerSetupInput,
+  ) => Promise<{ success: boolean; error?: string }>;
+
   // Toast / Notifications
   toastMessage: string | null;
   toastType: "success" | "error" | "info";
@@ -196,6 +210,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     useState<boolean>(false);
   const [serverUser, setServerUser] = useState<User | null>(null);
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
+
+  // First-owner provisioning state: default to "unknown / assume owner exists"
+  // so the setup modal only appears once the server confirms no owner.
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>({
+    checked: false,
+    hasOwner: true,
+  });
 
   // Live Database Sync State (Stage 2)
   const [apiSyncStatus, setApiSyncStatus] = useState<ApiSyncStatus>({
@@ -310,6 +331,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const refreshSetupStatus = async () => {
+    try {
+      const status = await api.getSetupStatus();
+      setSetupStatus({ checked: true, hasOwner: status.hasOwner });
+    } catch {
+      // If the status cannot be confirmed, fail safe: assume an owner exists
+      // and never offer provisioning UI against an unreachable server.
+      setSetupStatus({ checked: true, hasOwner: true });
+    }
+  };
+
+  const setupOwner = async (data: OwnerSetupInput) => {
+    try {
+      await api.setupOwner(data);
+      setSetupStatus({ checked: true, hasOwner: true });
+      showToast("Store owner provisioned. Please sign in.", "success");
+      return { success: true };
+    } catch (e: unknown) {
+      const msg = ownerSetupFailureMessage(e);
+      showToast(msg, "error");
+      return { success: false, error: msg };
+    }
+  };
+
   const syncCatalogFromApi = async () => {
     setApiSyncStatus((prev) => ({
       ...prev,
@@ -387,6 +432,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     // Attempt live catalog and session check on mount
     syncCatalogFromApi();
     checkSession();
+    refreshSetupStatus();
 
     return unsubscribe;
   }, []);
@@ -394,6 +440,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
   const currentUser = serverUser || (import.meta.env.PROD
     ? { ...dbState.currentUser, name: "Sign in required", email: "", role: "CASHIER" as const, active: false }
     : dbState.currentUser);
+
+  const requiresOwnerSetup = shouldShowOwnerSetup(setupStatus);
 
   const switchUser = (userId: string) => {
     if (import.meta.env.PROD) {
@@ -1068,6 +1116,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
         loginToServer,
         logoutFromServer,
         resetStaffCredential,
+        setupStatus,
+        requiresOwnerSetup,
+        refreshSetupStatus,
+        setupOwner,
       }}
     >
       {children}

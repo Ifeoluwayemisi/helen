@@ -196,7 +196,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 <Keyboard className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="e.g. MGR-005 or 6151234567890"
+                  placeholder="e.g. SKU or barcode"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
