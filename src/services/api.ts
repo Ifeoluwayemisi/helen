@@ -39,6 +39,18 @@ export interface HealthCheckResponse {
   };
 }
 
+/**
+ * Absolute origin serving the Hellen Store API (no trailing slash).
+ *
+ * - Unset (dev / same-origin preview): requests stay relative to the host,
+ *   which keeps the Fastify middleware on `/api` in charge.
+ * - Set on a static host such as Vercel: routes every call to the separately
+ *   deployed Node API, since a static host has no `/api` backend.
+ */
+const API_BASE = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ""
+).replace(/\/+$/, "");
+
 class ApiService {
   constructor() {
     if (typeof window !== "undefined") {
@@ -50,13 +62,14 @@ class ApiService {
     endpoint: string,
     options?: RequestInit,
   ): Promise<T> {
+    const url = endpoint.startsWith("/") ? `${API_BASE}${endpoint}` : endpoint;
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...((options?.headers as Record<string, string>) || {}),
       };
 
-      const response = await fetch(endpoint, {
+      const response = await fetch(url, {
         credentials: "include", // Sends & receives HTTP-only cookies
         ...options,
         headers,

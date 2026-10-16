@@ -15,49 +15,58 @@ if (process.argv.includes('build')) {
 
 function fastifyApiPlugin() {
   let fastifyAppPromise: Promise<any> | null = null;
+
+  // Shared handler used by both the dev server and `vite preview`. Without
+  // registering this for preview, a built frontend has no `/api` backend and
+  // every auth/session call fails with a bare 404.
+  const handleApiRequest = async (req: any, res: any, next: any) => {
+    if (!req.url?.startsWith('/api')) {
+      return next();
+    }
+
+    try {
+      if (!fastifyAppPromise) {
+        const { buildApp } = await import('./server/app.ts');
+        fastifyAppPromise = buildApp();
+      }
+      const app = await fastifyAppPromise;
+
+      // Collect body chunks if request has a payload
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const payload = chunks.length > 0 ? Buffer.concat(chunks).toString() : undefined;
+
+      const response = await app.inject({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        payload,
+      });
+
+      res.statusCode = response.statusCode;
+      for (const [key, value] of Object.entries(response.headers)) {
+        if (value !== undefined) {
+          res.setHeader(key, value);
+        }
+      }
+      res.end(response.body);
+    } catch (err: any) {
+      console.error('[API Middleware Error]:', err);
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: 'Internal API Server Error' }));
+    }
+  };
+
   return {
     name: 'fastify-api-middleware',
     configureServer(server: any) {
-      server.middlewares.use(async (req: any, res: any, next: any) => {
-        if (!req.url?.startsWith('/api')) {
-          return next();
-        }
-
-        try {
-          if (!fastifyAppPromise) {
-            const { buildApp } = await import('./server/app.ts');
-            fastifyAppPromise = buildApp();
-          }
-          const app = await fastifyAppPromise;
-
-          // Collect body chunks if request has a payload
-          const chunks: Buffer[] = [];
-          for await (const chunk of req) {
-            chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-          }
-          const payload = chunks.length > 0 ? Buffer.concat(chunks).toString() : undefined;
-
-          const response = await app.inject({
-            method: req.method,
-            url: req.url,
-            headers: req.headers,
-            payload,
-          });
-
-          res.statusCode = response.statusCode;
-          for (const [key, value] of Object.entries(response.headers)) {
-            if (value !== undefined) {
-              res.setHeader(key, value);
-            }
-          }
-          res.end(response.body);
-        } catch (err: any) {
-          console.error('[API Middleware Error]:', err);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ success: false, error: 'Internal API Server Error' }));
-        }
-      });
+      server.middlewares.use(handleApiRequest);
+    },
+    configurePreviewServer(server: any) {
+      server.middlewares.use(handleApiRequest);
     },
   };
 }

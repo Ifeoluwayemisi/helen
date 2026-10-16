@@ -11,6 +11,10 @@ import { salesRoutes } from "./routes/sales.routes";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = fastify({
+    // Production runs behind a managed load balancer / reverse proxy (the
+    // separate Node host or Vercel edge). Trust forwarded headers so
+    // request.ip reflects the real client for session/IP lockout and audit.
+    trustProxy: true,
     logger: {
       level: config.nodeEnv === "production" ? "info" : "debug",
     },

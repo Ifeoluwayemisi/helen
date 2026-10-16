@@ -65,7 +65,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     reply.setCookie(SESSION_COOKIE_NAME, rawToken, {
       path: "/",
       httpOnly: true,
-      sameSite: "lax",
+      // Production serves the UI and API on different origins (e.g. a Vercel
+      // static site calling a separate Node host), so a Lax cookie would be
+      // withheld from every cross-site request. Secure + SameSite=None keeps
+      // the HTTP-only session working there; dev stays Lax on one origin.
+      sameSite: config.nodeEnv === "production" ? "none" : "lax",
       secure: config.nodeEnv === "production",
       expires: expiresAt,
       maxAge: Math.floor(SESSION_DURATION_MS / 1000),
@@ -97,7 +101,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     reply.clearCookie(SESSION_COOKIE_NAME, {
       path: "/",
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: config.nodeEnv === "production" ? "none" : "lax",
       secure: config.nodeEnv === "production",
     });
 
