@@ -69,6 +69,31 @@ const API_BASE = resolveApiBase(
   import.meta.env.VITE_API_BASE_URL as string | undefined,
 );
 
+// Optional numeric product fields the API may return as JSON `null` (the DB
+// columns are nullable). The `Product` type models them as optional, and the UI
+// uses `!== undefined` checks, so normalize null -> undefined at the boundary.
+// Without this, `product.wholesalePrice.toLocaleString()` throws on null.
+const NULLABLE_PRODUCT_NUMERIC_FIELDS = [
+  "wholesalePrice",
+  "costPrice",
+  "packSize",
+  "packRetailPrice",
+  "packWholesalePrice",
+  "cartonSize",
+  "cartonRetailPrice",
+  "cartonWholesalePrice",
+] as const;
+
+function normalizeProduct<T extends Product>(product: T): T {
+  const record = product as unknown as Record<string, unknown>;
+  for (const field of NULLABLE_PRODUCT_NUMERIC_FIELDS) {
+    if (record[field] === null) {
+      record[field] = undefined;
+    }
+  }
+  return product;
+}
+
 class ApiService {
   constructor() {
     if (typeof window !== "undefined") {
@@ -142,7 +167,7 @@ class ApiService {
       products: Product[];
       count: number;
     }>(endpoint);
-    return result.products;
+    return result.products.map(normalizeProduct);
   }
 
   // Fetch categories: GET /api/categories
@@ -196,7 +221,7 @@ class ApiService {
     const result = await this.fetchJson<{ success: boolean; product: Product }>(
       `/api/products/${id}`,
     );
-    return result.product;
+    return normalizeProduct(result.product);
   }
 
   // Register product: POST /api/products
@@ -216,7 +241,7 @@ class ApiService {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return result.product;
+    return normalizeProduct(result.product);
   }
 
   // Update product: PATCH /api/products/:id
@@ -232,7 +257,7 @@ class ApiService {
       method: "PATCH",
       body: JSON.stringify(updates),
     });
-    return result.product;
+    return normalizeProduct(result.product);
   }
 
   // =========================================================================
@@ -248,7 +273,7 @@ class ApiService {
     supplier?: string;
     note?: string;
   }): Promise<{ success: boolean; product: Product; received: any }> {
-    return this.fetchJson<{
+    const result = await this.fetchJson<{
       success: boolean;
       product: Product;
       received: any;
@@ -256,6 +281,7 @@ class ApiService {
       method: "POST",
       body: JSON.stringify(params),
     });
+    return { ...result, product: normalizeProduct(result.product) };
   }
 
   // Authorized stock adjustment: POST /api/inventory/adjust
@@ -265,7 +291,7 @@ class ApiService {
     reason?: "ADJUSTMENT" | "DAMAGED" | "RETURN";
     note: string;
   }): Promise<{ success: boolean; product: Product; adjustment: any }> {
-    return this.fetchJson<{
+    const result = await this.fetchJson<{
       success: boolean;
       product: Product;
       adjustment: any;
@@ -273,6 +299,7 @@ class ApiService {
       method: "POST",
       body: JSON.stringify(params),
     });
+    return { ...result, product: normalizeProduct(result.product) };
   }
 
   // Audit movements ledger: GET /api/inventory/movements

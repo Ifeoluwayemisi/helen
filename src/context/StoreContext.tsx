@@ -484,7 +484,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     let conversionFactor = 1;
     let unitName = liveProd.baseUnit || "bottle";
     let unitPrice =
-      priceTier === "WHOLESALE" && liveProd.wholesalePrice !== undefined
+      priceTier === "WHOLESALE" && liveProd.wholesalePrice != null
         ? liveProd.wholesalePrice
         : liveProd.sellingPrice;
 
@@ -492,7 +492,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       conversionFactor = liveProd.packSize || 12;
       unitName = liveProd.packUnitName || `Pack of ${conversionFactor}`;
       unitPrice =
-        priceTier === "WHOLESALE" && liveProd.packWholesalePrice !== undefined
+        priceTier === "WHOLESALE" && liveProd.packWholesalePrice != null
           ? liveProd.packWholesalePrice
           : (liveProd.packRetailPrice ??
             liveProd.sellingPrice * conversionFactor);
@@ -500,7 +500,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       conversionFactor = liveProd.cartonSize || 24;
       unitName = liveProd.cartonUnitName || `Carton of ${conversionFactor}`;
       unitPrice =
-        priceTier === "WHOLESALE" && liveProd.cartonWholesalePrice !== undefined
+        priceTier === "WHOLESALE" && liveProd.cartonWholesalePrice != null
           ? liveProd.cartonWholesalePrice
           : (liveProd.cartonRetailPrice ??
             liveProd.sellingPrice * conversionFactor);

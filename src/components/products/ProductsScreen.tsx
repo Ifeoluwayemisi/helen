@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Product, Category } from '../../types';
 import {
@@ -173,20 +173,20 @@ export const ProductsScreen: React.FC = () => {
     setSku(p.sku);
     setBarcode(p.barcode || '');
     setSellingPrice(String(p.sellingPrice));
-    setWholesalePrice(p.wholesalePrice !== undefined ? String(p.wholesalePrice) : '');
+    setWholesalePrice(p.wholesalePrice != null ? String(p.wholesalePrice) : '');
     setCostPrice(p.costPrice ? String(p.costPrice) : '');
     setBaseUnit(p.baseUnit || 'bottle');
     setMinStockThreshold(String(p.minStockThreshold));
     setHasPack(Boolean(p.hasPack));
     setPackUnitName(p.packUnitName || 'Pack of 12');
     setPackSize(p.packSize ? String(p.packSize) : '12');
-    setPackRetailPrice(p.packRetailPrice !== undefined ? String(p.packRetailPrice) : '');
-    setPackWholesalePrice(p.packWholesalePrice !== undefined ? String(p.packWholesalePrice) : '');
+    setPackRetailPrice(p.packRetailPrice != null ? String(p.packRetailPrice) : '');
+    setPackWholesalePrice(p.packWholesalePrice != null ? String(p.packWholesalePrice) : '');
     setHasCarton(Boolean(p.hasCarton));
     setCartonUnitName(p.cartonUnitName || 'Carton of 24');
     setCartonSize(p.cartonSize ? String(p.cartonSize) : '24');
-    setCartonRetailPrice(p.cartonRetailPrice !== undefined ? String(p.cartonRetailPrice) : '');
-    setCartonWholesalePrice(p.cartonWholesalePrice !== undefined ? String(p.cartonWholesalePrice) : '');
+    setCartonRetailPrice(p.cartonRetailPrice != null ? String(p.cartonRetailPrice) : '');
+    setCartonWholesalePrice(p.cartonWholesalePrice != null ? String(p.cartonWholesalePrice) : '');
     setFormError(null);
   };
 
@@ -413,14 +413,14 @@ export const ProductsScreen: React.FC = () => {
                           <div className="font-extrabold text-sm text-emerald-800">
                             {settings.currency}{p.sellingPrice.toLocaleString()}<span className="text-[10px] font-normal text-slate-500">/{p.baseUnit || 'unit'}</span>
                           </div>
-                          {p.wholesalePrice !== undefined && (
+                          {p.wholesalePrice != null && (
                             <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">
                               Wholesale: {settings.currency}{p.wholesalePrice.toLocaleString()}
                             </div>
                           )}
                         </td>
                         <td className="py-3 px-3 text-slate-500">
-                          {p.costPrice ? `${settings.currency}${p.costPrice.toLocaleString()}` : '—'}
+                          {p.costPrice ? `${settings.currency}${p.costPrice.toLocaleString()}` : 'â€”'}
                         </td>
                         <td className="py-3 px-3 text-center font-bold">
                           <span
@@ -685,7 +685,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Pack Retail (₦)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Pack Retail (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -696,7 +696,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Pack Wholesale (₦)</label>
+                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Pack Wholesale (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -748,7 +748,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Carton Retail (₦)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Carton Retail (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -759,7 +759,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Carton Wholesale (₦)</label>
+                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Carton Wholesale (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -950,7 +950,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Pack Retail (₦)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Pack Retail (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -961,7 +961,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Pack Wholesale (₦)</label>
+                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Pack Wholesale (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -1013,7 +1013,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Carton Retail (₦)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Carton Retail (â‚¦)</label>
                       <input
                         type="number"
                         min="0"
@@ -1024,7 +1024,7 @@ export const ProductsScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Carton Wholesale (₦)</label>
+                      <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Carton Wholesale (â‚¦)</label>
                       <input
                         type="number"
                         min="0"

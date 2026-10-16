@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+﻿import React, { useState, useMemo } from "react";
 import { useStore } from "../../context/StoreContext";
 import { Product, PaymentMethod } from "../../types";
 import {
@@ -268,7 +268,7 @@ export const POSScreen: React.FC = () => {
                       if (
                         product.hasPack ||
                         product.hasCarton ||
-                        product.wholesalePrice !== undefined
+                        product.wholesalePrice != null
                       ) {
                         setUnitSelectProduct(product);
                         setSelectedUnitType("BASE");
@@ -326,7 +326,7 @@ export const POSScreen: React.FC = () => {
                             /{product.baseUnit || "btl"}
                           </span>
                         </div>
-                        {product.wholesalePrice !== undefined && (
+                        {product.wholesalePrice != null && (
                           <div className="text-[10px] text-indigo-700 font-semibold leading-none mt-0.5">
                             Ws: {settings.currency}
                             {product.wholesalePrice.toLocaleString()}
@@ -724,7 +724,7 @@ export const POSScreen: React.FC = () => {
               <div>
                 <h3 className="text-base font-extrabold">Complete Sale</h3>
                 <p className="text-xs text-slate-400">
-                  {cartItemCount} items · Total: {settings.currency}
+                  {cartItemCount} items Â· Total: {settings.currency}
                   {totalPayable.toLocaleString()}
                 </p>
               </div>
@@ -1062,7 +1062,7 @@ export const POSScreen: React.FC = () => {
                     <span className="text-xs font-mono">
                       {settings.currency}
                       {(selectedPriceTier === "WHOLESALE" &&
-                      unitSelectProduct.wholesalePrice !== undefined
+                      unitSelectProduct.wholesalePrice != null
                         ? unitSelectProduct.wholesalePrice
                         : unitSelectProduct.sellingPrice
                       ).toLocaleString()}
@@ -1088,7 +1088,7 @@ export const POSScreen: React.FC = () => {
                       <span className="text-xs font-mono">
                         {settings.currency}
                         {(selectedPriceTier === "WHOLESALE" &&
-                        unitSelectProduct.packWholesalePrice !== undefined
+                        unitSelectProduct.packWholesalePrice != null
                           ? unitSelectProduct.packWholesalePrice
                           : (unitSelectProduct.packRetailPrice ??
                             unitSelectProduct.sellingPrice *
@@ -1117,7 +1117,7 @@ export const POSScreen: React.FC = () => {
                       <span className="text-xs font-mono">
                         {settings.currency}
                         {(selectedPriceTier === "WHOLESALE" &&
-                        unitSelectProduct.cartonWholesalePrice !== undefined
+                        unitSelectProduct.cartonWholesalePrice != null
                           ? unitSelectProduct.cartonWholesalePrice
                           : (unitSelectProduct.cartonRetailPrice ??
                             unitSelectProduct.sellingPrice *
@@ -1234,7 +1234,7 @@ export const POSScreen: React.FC = () => {
           if (
             product.hasPack ||
             product.hasCarton ||
-            product.wholesalePrice !== undefined
+            product.wholesalePrice != null
           ) {
             setUnitSelectProduct(product);
             setSelectedUnitType("BASE");
