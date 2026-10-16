@@ -40,16 +40,34 @@ export interface HealthCheckResponse {
 }
 
 /**
- * Absolute origin serving the Hellen Store API (no trailing slash).
+ * Resolve the absolute origin serving the Hellen Store API.
  *
  * - Unset (dev / same-origin preview): requests stay relative to the host,
  *   which keeps the Fastify middleware on `/api` in charge.
  * - Set on a static host such as Vercel: routes every call to the separately
  *   deployed Node API, since a static host has no `/api` backend.
+ *
+ * A value that is not a valid absolute http(s) URL is ignored (falls back to
+ * same-origin). This prevents a masked/placeholder env var from silently
+ * turning every request into a garbage relative path on the static host.
  */
-const API_BASE = (
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ""
-).replace(/\/+$/, "");
+function resolveApiBase(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.origin;
+    }
+  } catch {
+    // Not an absolute URL; ignore it rather than build a broken path.
+  }
+  return "";
+}
+
+const API_BASE = resolveApiBase(
+  import.meta.env.VITE_API_BASE_URL as string | undefined,
+);
 
 class ApiService {
   constructor() {

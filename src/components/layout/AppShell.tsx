@@ -418,6 +418,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <input
                   type="email"
                   required
+                  autoComplete="username"
                   placeholder="you@example.com"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
@@ -430,6 +431,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <input
                   type="password"
                   required
+                  autoComplete="current-password"
                   placeholder="Enter 4-digit PIN or password"
                   value={loginCredential}
                   onChange={(e) => setLoginCredential(e.target.value)}
