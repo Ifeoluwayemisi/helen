@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StoreProvider } from './context/StoreContext';
+import { StoreProvider, useStore } from './context/StoreContext';
+import { AuthGate } from './components/auth/AuthGate';
 import { AppShell } from './components/layout/AppShell';
 import { POSScreen } from './components/pos/POSScreen';
 import { InventoryScreen } from './components/inventory/InventoryScreen';
@@ -32,10 +33,22 @@ function MainApp() {
   );
 }
 
+function GatedApp() {
+  const { isServerAuthenticated } = useStore();
+
+  // In production, never render the app shell without a verified server session.
+  // Development keeps its local operator flow (no server login required).
+  if (import.meta.env.PROD && !isServerAuthenticated) {
+    return <AuthGate />;
+  }
+
+  return <MainApp />;
+}
+
 export default function App() {
   return (
     <StoreProvider>
-      <MainApp />
+      <GatedApp />
     </StoreProvider>
   );
 }

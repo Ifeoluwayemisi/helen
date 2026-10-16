@@ -128,6 +128,7 @@ interface StoreContextValue {
 
   // Authentication & Session State (Stage 3)
   isServerAuthenticated: boolean;
+  sessionCheckComplete: boolean;
   serverUser: User | null;
   loginToServer: (
     email: string,
@@ -1112,6 +1113,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
         apiSyncStatus,
         syncCatalogFromApi,
         isServerAuthenticated,
+        sessionCheckComplete,
         serverUser,
         loginToServer,
         logoutFromServer,
